@@ -1,2 +1,7 @@
 .vscode/*
 !.vscode/mcp.json
+
+# Local development files (personal credentials and configs)
+.env.local
+start-local.sh
+docker-compose.override.yml

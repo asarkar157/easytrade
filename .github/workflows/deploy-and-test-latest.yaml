@@ -1,8 +1,65 @@
-name: Deploy and test easytrade with latest images
+name: Deploy and test easytrade
 on:
   push:
     branches:
       - "main"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Docker image tag to use (defaults to latest)'
+        required: false
+        type: string
+        default: 'latest'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Docker image tag to use (defaults to latest)'
+        required: false
+        type: string
+        default: 'latest'
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      JAEGER_ENDPOINT:
+        required: false
+      JAEGER_USERNAME:
+        required: false
+      JAEGER_PASSWORD:
+        required: false
+      JAEGER_INSECURE:
+        required: false
+      LOKI_ENDPOINT:
+        required: false
+      LOKI_USERNAME:
+        required: false
+      LOKI_PASSWORD:
+        required: false
+      VICTORIAMETRICS_ENDPOINT:
+        required: false
+      VICTORIAMETRICS_USERNAME:
+        required: false
+      VICTORIAMETRICS_PASSWORD:
+        required: false
+      VICTORIAMETRICS_ENVIRONMENT:
+        required: false
+      DYNATRACE_ENDPOINT:
+        required: false
+      DYNATRACE_API_TOKEN:
+        required: false
+      DYNATRACE_TENANT_URL:
+        required: false
+      DYNATRACE_PLATFORM_TOKEN:
+        required: false
+      OQR_CLIENT_ID:
+        required: false
+      OQR_CLIENT_SECRET:
+        required: false
+      OQR_URL:
+        required: false
+      SSO_URL:
+        required: false
 
 env:
   SKAFFOLD_DEFAULT_REPO: asarkar157
@@ -63,8 +120,15 @@ jobs:
         env:
           REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         run: |
-          # Use latest tag from previously built images
-          export TAG=latest
+          # Use tag from input (defaults to latest if not provided)
+          # If tag is a full commit SHA, use first 7 characters (for compatibility)
+          # Handles workflow_dispatch, workflow_call, and push triggers
+          TAG_INPUT="${{ inputs.tag }}"
+          if [ -n "$TAG_INPUT" ] && [ "$TAG_INPUT" != "latest" ]; then
+            export TAG=$(echo "$TAG_INPUT" | cut -c 1-7)
+          else
+            export TAG=latest
+          fi
           export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
           docker compose -f compose.yaml up -d
 
@@ -89,8 +153,15 @@ jobs:
         env:
           REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         run: |
-          # Use latest tag from previously built images
-          export TAG=latest
+          # Use tag from input (defaults to latest if not provided)
+          # If tag is a full commit SHA, use first 7 characters (for compatibility)
+          # Handles workflow_dispatch, workflow_call, and push triggers
+          TAG_INPUT="${{ inputs.tag }}"
+          if [ -n "$TAG_INPUT" ] && [ "$TAG_INPUT" != "latest" ]; then
+            export TAG=$(echo "$TAG_INPUT" | cut -c 1-7)
+          else
+            export TAG=latest
+          fi
           export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
           
           # Stop and remove existing containers that will be replaced with test versions
@@ -222,8 +293,15 @@ jobs:
           docker stop credit-card-order-service third-party-service || true
           docker rm credit-card-order-service third-party-service || true
           
-          # Restore original containers using docker compose with latest tag
-          export TAG=latest
+          # Restore original containers using docker compose with tag from input (defaults to latest)
+          # If tag is a full commit SHA, use first 7 characters (for compatibility)
+          # Handles workflow_dispatch, workflow_call, and push triggers
+          TAG_INPUT="${{ inputs.tag }}"
+          if [ -n "$TAG_INPUT" ] && [ "$TAG_INPUT" != "latest" ]; then
+            export TAG=$(echo "$TAG_INPUT" | cut -c 1-7)
+          else
+            export TAG=latest
+          fi
           export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
           docker compose -f compose.yaml up -d credit-card-order-service third-party-service
 

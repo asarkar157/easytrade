@@ -69,6 +69,42 @@ You should be able to access the app at `localhost:80` or simply `localhost`.
 
 > **NOTE:** Docker Compose V1 which came as a separate binary (`docker-compose`) will not work with this version. You can check this [guide](https://www.howtogeek.com/devops/how-to-upgrade-to-docker-compose-v2/) on how to upgrade.
 
+## Local Development Setup
+
+For local development with personal observability endpoints and credentials:
+
+1. **Create your local environment file:**
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+2. **Edit `.env.local`** with your personal endpoints and credentials:
+   - Jaeger endpoint and credentials (if required)
+   - Loki endpoint and credentials (if required)
+   - VictoriaMetrics endpoint and credentials (optional)
+   - Docker registry and tag settings (if different from defaults)
+
+3. **Start everything with a single command:**
+   ```bash
+   ./start-local.sh
+   ```
+
+   This script will:
+   - Load your credentials from `.env.local`
+   - Generate authentication headers automatically
+   - Start the observability stack (OpenTelemetry Collector)
+   - Wait for the collector to be ready
+   - Start all EasyTrade application services
+   - Display service status
+
+4. **Stop all services:**
+   ```bash
+   docker compose -f compose.yaml down
+   cd observability && docker compose -f docker-compose-observability.yml down
+   ```
+
+> **NOTE:** `.env.local` and `start-local.sh` are gitignored and will not be committed to the repository. This keeps your personal credentials secure.
+
 ## Kubernetes instructions
 
 To deploy Easytrade in kubernetes you need to have:

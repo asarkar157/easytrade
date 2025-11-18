@@ -47,6 +47,9 @@ build:
     push: false
     tryImportMissing: true
     useBuildkit: true
+    platforms:
+      - linux/amd64
+      - linux/arm64
 deploy:
   statusCheckDeadlineSeconds: 300
   tolerateFailuresUntilDeadline: true
