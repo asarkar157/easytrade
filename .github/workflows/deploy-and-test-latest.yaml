@@ -1,0 +1,218 @@
+name: Deploy and test easytrade with latest images
+on:
+  push:
+    branches:
+      - "main"
+
+env:
+  SKAFFOLD_DEFAULT_REPO: asarkar157
+
+jobs:
+  deploy-easytrade:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Compose
+        run: |
+          docker compose version
+
+      - name: Create easytrade network
+        run: |
+          docker network create easytrade || true
+
+      - name: Start observability stack
+        working-directory: ./observability
+        env:
+          JAEGER_ENDPOINT: ${{ secrets.JAEGER_ENDPOINT }}
+          LOKI_ENDPOINT: ${{ secrets.LOKI_ENDPOINT }}
+          JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'true' }}
+          DYNATRACE_ENDPOINT: ${{ secrets.DYNATRACE_ENDPOINT || 'https://zsl01171.apps.dynatrace.com/api/v2/otlp' }}
+          DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
+        run: |
+          docker compose -f docker-compose-observability.yml up -d
+
+      - name: Wait for observability stack to be ready
+        run: |
+          echo "Waiting for OpenTelemetry Collector to be ready..."
+          timeout 60 bash -c 'until docker exec otel-collector wget -q --spider http://localhost:13133 2>/dev/null; do sleep 2; done' || true
+
+      - name: Start EasyTrade services
+        env:
+          REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        run: |
+          # Use latest tag from previously built images
+          export TAG=latest
+          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          docker compose -f compose.yaml up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          docker compose -f compose.yaml ps
+
+      - name: Check service health
+        run: |
+          echo "Checking service health..."
+          docker compose -f compose.yaml ps --format json | jq -r '.[] | "\(.Service): \(.State)"'
+          # Check if frontend reverse proxy is responding
+          timeout 60 bash -c 'until curl -f http://localhost:80 > /dev/null 2>&1; do sleep 5; done' || echo "Frontend not yet ready"
+
+  run-tests:
+    runs-on: ubuntu-24.04
+    needs: deploy-easytrade
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Enable test environment
+        env:
+          REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        run: |
+          # Use latest tag from previously built images
+          export TAG=latest
+          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          
+          # Stop and remove existing containers
+          docker compose -f compose.yaml stop credit-card-order-service third-party-service || true
+          docker compose -f compose.yaml rm -f credit-card-order-service third-party-service || true
+          
+          # Get the image names
+          CREDIT_CARD_IMAGE="${REGISTRY}/credit-card-order-service:${TAG}"
+          THIRD_PARTY_IMAGE="${REGISTRY}/third-party-service:${TAG}"
+          
+          # Start credit-card-order-service with test environment variables
+          docker run -d --name credit-card-order-service \
+            --network easytrade \
+            --env WORK_DELAY=10 \
+            --env WORK_RATE=10 \
+            --env PROXY_PREFIX=credit-card-order-service \
+            --env MSSQL_CONNECTIONSTRING="jdbc:sqlserver://db:1433;database=TradeManagement;user=sa;password=yourStrong(!)Password;encrypt=false;trustServerCertificate=false;loginTimeout=30;" \
+            --env THIRD_PARTY_SERVICE_HOSTANDPORT=third-party-service:8080 \
+            --env FEATURE_FLAG_SERVICE_PROTOCOL=http \
+            --env FEATURE_FLAG_SERVICE_BASE_URL=feature-flag-service \
+            --env FEATURE_FLAG_SERVICE_PORT=8080 \
+            --env JAVA_TOOL_OPTIONS="-XX:-OmitStackTraceInFastThrow" \
+            "${CREDIT_CARD_IMAGE}" || true
+          
+          # Start third-party-service with test environment variables
+          docker run -d --name third-party-service \
+            --network easytrade \
+            --env COURIER_DELAY=10 \
+            --env COURIER_RATE=10 \
+            --env MANUFACTURE_DELAY=10 \
+            --env MANUFACTURE_RATE=10 \
+            --env PROXY_PREFIX=third-party-service \
+            --env FEATURE_FLAG_SERVICE_PROTOCOL=http \
+            --env FEATURE_FLAG_SERVICE_BASE_URL=feature-flag-service \
+            --env FEATURE_FLAG_SERVICE_PORT=8080 \
+            --env CREDIT_CARD_ORDER_SERVICE_HOSTANDPORT=credit-card-order-service:8080 \
+            "${THIRD_PARTY_IMAGE}" || true
+
+      - name: Wait for services to restart
+        run: |
+          echo "Waiting for services to restart with test environment settings..."
+          sleep 10
+          docker ps --filter "name=credit-card-order-service" --filter "name=third-party-service" --format "table {{.Names}}\t{{.Status}}"
+
+      - name: Wait 3 minutes
+        run: sleep 3m
+
+      - name: Order credit card
+        run: |
+          BODY='{
+            "accountId": 3,
+            "email": "demo.user@dynatrace.com",
+            "name": "Demo User",
+            "shippingAddress": "ulica Andersa 352 91-682 Ilaw",
+            "cardLevel": "Platinum"
+          }'
+          
+          RESPONSE=$(docker run --rm --network easytrade curlimages/curl:latest \
+            -sLX POST 'http://credit-card-order-service:8080/v1/orders' \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "${BODY}")
+          echo "Card ordered, response: [${RESPONSE}]"
+
+      - name: Wait 12 minutes
+        run: sleep 12m
+
+      - name: Check credit card order
+        id: check-credit-card-order
+        run: |
+          RESPONSE=$(docker run --rm --network easytrade curlimages/curl:latest \
+            -sLX GET 'http://credit-card-order-service:8080/v1/orders/3/status/latest' \
+            -H 'accept: application/json')
+          echo "Response: [${RESPONSE}]"
+          
+          STATUS=$(echo $RESPONSE | jq -re '.results.status')
+          echo "Latest card status: [${STATUS}]"
+          
+          if [[ "$STATUS" == "card_delivered" ]]; then
+            echo "Credit card order test passed"
+            echo "result=pass" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "::error::Credit card order test failed"
+            echo "result=fail" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Send deployment event to Dynatrace (optional)
+        # Send a business event to your Dynatrace tenant to track deployments
+        # This is a simplified version that just sends events - no validation workflow needed
+        # 
+        # To use this, set these secrets in your repository:
+        # - DYNATRACE_TENANT_URL: Your Dynatrace tenant URL (e.g., https://zsl01171.apps.dynatrace.com)
+        # - DYNATRACE_PLATFORM_TOKEN: Your Dynatrace platform token with "Ingest business events" permission
+        continue-on-error: true
+        uses: ./.github/actions/send-deployment-event
+        with:
+          tenant_url: ${{ secrets.DYNATRACE_TENANT_URL }}
+          platform_token: ${{ secrets.DYNATRACE_PLATFORM_TOKEN }}
+          application_name: "easytrade"
+          deployment_version: ${{ github.sha }}
+
+      - name: Run validation (Dynatrace internal - optional)
+        # This step is for Dynatrace's internal validation system and requires:
+        # - OAuth client credentials (OQR_CLIENT_ID, OQR_CLIENT_SECRET)
+        # - Access to Dynatrace SSO (SSO_URL)
+        # - Dynatrace tenant with validation workflows (OQR_URL)
+        # This step will be skipped if you don't have access to Dynatrace's internal systems
+        # The workflow will continue even if this step fails
+        continue-on-error: true
+        uses: ./.github/actions/run-validation
+        with:
+          client_id: ${{ secrets.OQR_CLIENT_ID }}
+          client_secret: ${{ secrets.OQR_CLIENT_SECRET }}
+          sso_url: ${{ secrets.SSO_URL }}
+          tenant_url: ${{ secrets.OQR_URL }}
+
+      - name: Disable test environment
+        env:
+          REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        run: |
+          # Stop and remove test containers
+          docker stop credit-card-order-service third-party-service || true
+          docker rm credit-card-order-service third-party-service || true
+          
+          # Restore original containers using docker compose with latest tag
+          export TAG=latest
+          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          docker compose -f compose.yaml up -d credit-card-order-service third-party-service
+
