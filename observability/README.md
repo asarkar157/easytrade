@@ -48,7 +48,7 @@ This directory contains the configuration for the EasyTrade observability stack,
 
 ### 1. Configure External Observability Endpoints
 
-Before starting the observability stack, configure the endpoints for your external Prometheus, Loki, and Jaeger instances:
+**⚠️ IMPORTANT**: Before starting the observability stack with docker compose, you **must** set the following environment variables if you want to connect to external Jaeger and Loki instances:
 
 ```bash
 export JAEGER_ENDPOINT=http://your-jaeger-host:4318
@@ -56,12 +56,27 @@ export LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
 export JAEGER_INSECURE=true  # Set to false if using TLS
 ```
 
-**Note**: For Prometheus, you don't need to set an environment variable. Instead, configure your external Prometheus to scrape the OpenTelemetry Collector's metrics endpoint (see Configuration section below).
+**Note**: 
+- These environment variables are **required** when using docker compose to connect to external Jaeger and Loki systems
+- If these variables are not set, the OpenTelemetry Collector will not be able to export traces and logs to your external instances
+- For Prometheus, you don't need to set an environment variable. Instead, configure your external Prometheus to scrape the OpenTelemetry Collector's metrics endpoint (see Configuration section below)
 
 ### 2. Start the Observability Stack
 
+Make sure the environment variables are set in your current shell session, then start the stack:
+
 ```bash
 cd observability
+docker-compose -f docker-compose-observability.yml up -d
+```
+
+**Alternative**: You can also pass environment variables directly to docker compose:
+
+```bash
+cd observability
+JAEGER_ENDPOINT=http://your-jaeger-host:4318 \
+LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push \
+JAEGER_INSECURE=true \
 docker-compose -f docker-compose-observability.yml up -d
 ```
 
@@ -271,10 +286,26 @@ Key features:
 - Exports logs to external Loki (configured via `LOKI_ENDPOINT` environment variable)
 - Generates span metrics (RED metrics from traces)
 
-**Environment Variables:**
+**Environment Variables (Required for Docker Compose):**
 - `JAEGER_ENDPOINT`: URL of your external Jaeger instance (e.g., `http://jaeger.example.com:4318`)
+  - **Required** when using docker compose to connect to external Jaeger
+  - Must be set before running `docker-compose up`
 - `LOKI_ENDPOINT`: URL of your external Loki push API (e.g., `http://loki.example.com:3100/loki/api/v1/push`)
-- `JAEGER_INSECURE`: Set to `true` if Jaeger doesn't use TLS, `false` otherwise
+  - **Required** when using docker compose to connect to external Loki
+  - Must be set before running `docker-compose up`
+- `JAEGER_INSECURE`: Set to `true` if Jaeger doesn't use TLS, `false` otherwise (default: `true`)
+
+**Example:**
+```bash
+# Set environment variables
+export JAEGER_ENDPOINT=http://your-jaeger-host:4318
+export LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
+export JAEGER_INSECURE=true
+
+# Then start docker compose
+cd observability
+docker-compose -f docker-compose-observability.yml up -d
+```
 
 **Prometheus Configuration:**
 The OpenTelemetry Collector exposes metrics on port 8889. Configure your external Prometheus to scrape this endpoint:
