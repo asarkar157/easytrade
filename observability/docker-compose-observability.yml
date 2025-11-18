@@ -1,0 +1,33 @@
+version: '3.8'
+
+networks:
+  easytrade:
+    name: easytrade
+    external: true
+
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+      - "8889:8889"   # Prometheus exporter metrics
+      - "13133:13133" # health_check extension
+    networks:
+      - easytrade
+    restart: unless-stopped
+    environment:
+      # Configure external observability endpoints via environment variables
+      # REQUIRED: Set these before starting the stack:
+      # - JAEGER_ENDPOINT=http://your-jaeger-host:4318
+      # - LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
+      # External Prometheus should scrape http://<otel-collector-host>:8889/metrics
+      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT}
+      - JAEGER_INSECURE=${JAEGER_INSECURE:-true}
+      - LOKI_ENDPOINT=${LOKI_ENDPOINT}

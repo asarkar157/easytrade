@@ -11,7 +11,9 @@ on:
 
   workflow_call:
     secrets:
-      GAR_CREDENTIALS:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
         required: true
       KUBECONFIG:
         required: true
@@ -21,38 +23,26 @@ on:
         required: true
       OQR_URL:
         required: true
-      SNYK_API_TOKEN:
-        required: true
       SSH_PRIVATE_KEY:
         required: true
       SSO_URL:
         required: true
 
 env:
-  GAR_ADDRESS: europe-docker.pkg.dev
   NAMESPACE: easytrade
-  SKAFFOLD_DEFAULT_REPO: europe-docker.pkg.dev/dynatrace-demoability/docker/easytrade
+  SKAFFOLD_DEFAULT_REPO: asarkar157
   SKAFFOLD_VERSION: 2.13.2
 
 jobs:
-  snyk:
-    uses: ./.github/workflows/snyk.yaml
-    permissions:
-      security-events: write
-      contents: read
-      actions: read
-    secrets:
-      SNYK_API_TOKEN: ${{ secrets.SNYK_API_TOKEN }}
-
   build-easytrade:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Retrieve gar credentials
+      - name: Login to DockerHub
         run: |
-          echo "${{ secrets.GAR_CREDENTIALS }}" | docker login -u _json_key_base64 --password-stdin "${{ env.GAR_ADDRESS }}"
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Set application version
         uses: ./.github/actions/set-version

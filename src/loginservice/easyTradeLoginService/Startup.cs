@@ -14,6 +14,9 @@ using System.Threading.Tasks;
 
 using easyTradeLoginService.Models;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 
 namespace easyTradeLoginService
 {
@@ -30,6 +33,34 @@ namespace easyTradeLoginService
         public void ConfigureServices(IServiceCollection services)
         {
             var connectionString = Configuration["MSSQL_CONNECTIONSTRING"];
+
+            // Configure OpenTelemetry
+            var serviceName = Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? "loginservice";
+            var otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://otel-collector:4318";
+
+            services.AddOpenTelemetry()
+                .ConfigureResource(resource => resource
+                    .AddService(serviceName: serviceName, serviceVersion: "1.0.0")
+                    .AddAttributes(new Dictionary<string, object>
+                    {
+                        ["deployment.environment"] = "local",
+                        ["service.namespace"] = "easytrade"
+                    }))
+                .WithTracing(tracing => tracing
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddEntityFrameworkCoreInstrumentation()
+                    .AddOtlpExporter(options =>
+                    {
+                        options.Endpoint = new Uri($"{otlpEndpoint}/v1/traces");
+                    }))
+                .WithMetrics(metrics => metrics
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddOtlpExporter(options =>
+                    {
+                        options.Endpoint = new Uri($"{otlpEndpoint}/v1/metrics");
+                    }));
 
             services.AddDbContext<AccountsDbContext>(options => options.UseSqlServer(connectionString));
 

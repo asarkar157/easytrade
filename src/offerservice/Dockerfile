@@ -22,5 +22,10 @@ RUN npm ci --omit=dev \
     && npm cache clean --force
 
 COPY --chown=easytrade:easytrade --from=build ["app/dist", "./dist"]
+COPY --chown=easytrade:easytrade ["instrumentation.js", "./"]
 
-CMD [ "node", "./dist/src/app.js" ]
+ENV OTEL_SERVICE_NAME=offerservice
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+ENV OTEL_DEPLOYMENT_ENVIRONMENT=local
+
+CMD [ "node", "--require", "./instrumentation.js", "./dist/src/app.js" ]

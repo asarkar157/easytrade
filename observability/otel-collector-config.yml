@@ -1,0 +1,114 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "local"
+        action: upsert
+      - key: service.namespace
+        value: "easytrade"
+        action: upsert
+
+  attributes:
+    actions:
+      - key: http.url
+        action: delete
+      - key: http.request.header.authorization
+        action: delete
+
+exporters:
+  # Export traces to Jaeger (configurable via JAEGER_ENDPOINT env var)
+  # Set JAEGER_ENDPOINT to your external Jaeger instance, e.g.:
+  # JAEGER_ENDPOINT=http://your-jaeger-host:4318
+  otlp/jaeger:
+    endpoint: ${env:JAEGER_ENDPOINT}
+    tls:
+      insecure: ${env:JAEGER_INSECURE}
+
+  # Export logs to Loki (configurable via LOKI_ENDPOINT env var)
+  # Set LOKI_ENDPOINT to your external Loki instance, e.g.:
+  # LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
+  loki:
+    endpoint: ${env:LOKI_ENDPOINT}
+    labels:
+      resource:
+        service.name: "service_name"
+        service.namespace: "service_namespace"
+      attributes:
+        level: "level"
+        traceID: "trace_id"
+
+  # Export metrics to Prometheus (Prometheus scrapes from this endpoint)
+  # External Prometheus should scrape http://<otel-collector-host>:8889/metrics
+  # Configure your external Prometheus to scrape this endpoint:
+  # scrape_configs:
+  #   - job_name: 'otel-collector'
+  #     static_configs:
+  #       - targets: ['<otel-collector-host>:8889']
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: easytrade
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug exporter (optional, for troubleshooting)
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: service.name
+    exemplars:
+      enabled: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource, attributes]
+      exporters: [otlp/jaeger, logging, spanmetrics]
+
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheus, logging]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [loki, logging]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

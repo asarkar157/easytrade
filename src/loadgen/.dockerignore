@@ -3,3 +3,4 @@
 !/*.json
 !/resources
 !/src
+!/instrumentation.js

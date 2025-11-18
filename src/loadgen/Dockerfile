@@ -25,6 +25,11 @@ RUN npm ci --omit=dev \
     && npm cache clean --force
 
 COPY --from=builder ["/usr/src/app/build", "./build"]
+COPY ["instrumentation.js", "./"]
+
+ENV OTEL_SERVICE_NAME=loadgenerator
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+ENV OTEL_DEPLOYMENT_ENVIRONMENT=local
 
 ENTRYPOINT [ "/usr/bin/dumb-init", "--" ]
-CMD [ "node", "./build/src/main.js" ]
+CMD [ "node", "--require", "./instrumentation.js", "./build/src/main.js" ]
