@@ -62,7 +62,11 @@ jobs:
       - name: Check service health
         run: |
           echo "Checking service health..."
-          docker compose -f compose.yaml ps --format json | jq -r '.[] | "\(.Service): \(.State)"'
+          # Install jq if not available
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          docker compose -f compose.yaml ps --format json | jq -r '.[] | "\(.Service): \(.State)"' || docker compose -f compose.yaml ps
           # Check if frontend reverse proxy is responding
           timeout 60 bash -c 'until curl -f http://localhost:80 > /dev/null 2>&1; do sleep 5; done' || echo "Frontend not yet ready"
 
