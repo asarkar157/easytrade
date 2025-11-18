@@ -46,6 +46,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Pre-pull base images for BuildKit
+        run: |
+          # Pre-pull base images that are commonly used to avoid rate limiting during build
+          # These images are from DockerHub and need authentication
+          docker pull gcc:14.3.0-trixie@sha256:0bb1ad383e858a31b24ce42e152af3262d68d1679db50b9096ceb75ca0edc44f || true
+          docker pull ubuntu:24.04@sha256:66460d557b25769b102175144d538d88219c077c678a49af4afca6fbfc1b5252 || true
+          docker pull node:24.11-trixie-slim@sha256:a7dc5312b263c86d88b02f0665f0f4516292e3490601d3def196f6d4b8aa3f06 || true
+          docker pull node:24.11.0-alpine3.22@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787 || true
+
       - name: Set application version
         uses: ./.github/actions/set-version
         with:
