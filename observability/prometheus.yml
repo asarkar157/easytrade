@@ -1,0 +1,101 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'easytrade-local'
+    environment: 'development'
+
+# Scrape configurations
+scrape_configs:
+  # OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          service: 'otel-collector'
+
+  # OpenTelemetry Collector self-monitoring
+  - job_name: 'otel-collector-internal'
+    static_configs:
+      - targets: ['otel-collector:8888']
+        labels:
+          service: 'otel-collector-internal'
+
+  # Java/Spring Boot services (if exposing /actuator/prometheus)
+  - job_name: 'java-services'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+        - 'accountservice:8080'
+        - 'calculationservice:8080'
+        - 'contentcreator:8080'
+        - 'creditcardorderservice:8080'
+        - 'engine:8080'
+        - 'feature-flag-service:8080'
+        - 'third-party-service:8080'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):\d+'
+        target_label: service
+        replacement: '$1'
+
+  # Node.js services (custom /metrics endpoint)
+  - job_name: 'nodejs-services'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+        - 'offerservice:8080'
+        - 'loadgenerator:8080'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):\d+'
+        target_label: service
+        replacement: '$1'
+
+  # Go services (custom /metrics endpoint)
+  - job_name: 'go-services'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+        - 'pricing-service:8080'
+        - 'aggregatorservice:8080'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):\d+'
+        target_label: service
+        replacement: '$1'
+
+  # .NET services (custom /metrics endpoint)
+  - job_name: 'dotnet-services'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+        - 'loginservice:8080'
+        - 'broker-service:8080'
+        - 'manager:8080'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):\d+'
+        target_label: service
+        replacement: '$1'
+
+  # Frontend (if exposing metrics)
+  - job_name: 'frontend'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['frontend:80']
+        labels:
+          service: 'frontend'
+
+  # Infrastructure services
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+        labels:
+          service: 'rabbitmq'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'

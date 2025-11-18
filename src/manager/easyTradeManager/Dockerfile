@@ -27,5 +27,7 @@ WORKDIR /home/easytrade
 COPY --from=build --chown=easytrade:easytrade ["/publish", "./"]
 
 ENV ASPNETCORE_ENVIRONMENT=Development
+ENV OTEL_SERVICE_NAME=manager
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 CMD ["dotnet", "easyTradeManager.dll"]
