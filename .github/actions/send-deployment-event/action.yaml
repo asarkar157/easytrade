@@ -1,0 +1,63 @@
+name: Send deployment event
+description: Send a deployment business event to Dynatrace using a platform token (simplified - no validation)
+
+inputs:
+  tenant_url:
+    description: URL of the Dynatrace tenant (e.g., https://your-tenant.live.dynatrace.com or https://your-tenant.apps.dynatrace.com)
+    required: true
+  platform_token:
+    description: Dynatrace platform token (API token) with "Ingest business events" permission
+    required: true
+  application_name:
+    description: Name of the application being deployed
+    default: "easytrade"
+    required: false
+  deployment_version:
+    description: Version or tag of the deployment
+    default: ""
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Send deployment event
+      shell: bash
+      env:
+        PLATFORM_TOKEN: ${{ inputs.platform_token }}
+        TENANT_URL: ${{ inputs.tenant_url }}
+        APPLICATION_NAME: ${{ inputs.application_name }}
+        DEPLOYMENT_VERSION: ${{ inputs.deployment_version }}
+        GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: |
+        # Use deployment version if provided, otherwise use commit SHA
+        VERSION="${DEPLOYMENT_VERSION:-$(echo $GITHUB_SHA | cut -c 1-7)}"
+        
+        BODY=$(jq -cn \
+          --arg app "$APPLICATION_NAME" \
+          --arg version "$VERSION" \
+          --arg run_number "$GITHUB_RUN_NUMBER" \
+          --arg commit_sha "$GITHUB_SHA" \
+          '{
+            "event.provider": "Github Actions",
+            "event.type": "deployment",
+            "tags.application": $app,
+            "tags.deployment.version": $version,
+            "tags.deployment.run_number": $run_number,
+            "tags.deployment.commit_sha": $commit_sha,
+            "tags.environment": "github-actions"
+          }')
+        
+        echo "Sending deployment event to Dynatrace..."
+        echo "Tenant: ${TENANT_URL}"
+        echo "Application: ${APPLICATION_NAME}"
+        echo "Version: ${VERSION}"
+        
+        curl -sfLX POST "${TENANT_URL}/platform/classic/environment-api/v2/bizevents/ingest" \
+          --header "Content-Type: application/json" \
+          --header "Authorization: Api-Token ${PLATFORM_TOKEN}" \
+          --data-raw "${BODY}"
+        
+        echo "Deployment event sent successfully"
+        echo "Run Number: ${GITHUB_RUN_NUMBER}"
+
