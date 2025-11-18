@@ -70,19 +70,6 @@ jobs:
           # Check if frontend reverse proxy is responding
           timeout 60 bash -c 'until curl -f http://localhost:80 > /dev/null 2>&1; do sleep 5; done' || echo "Frontend not yet ready"
 
-  run-tests:
-    runs-on: ubuntu-24.04
-    needs: deploy-easytrade
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Enable test environment
         env:
           REGISTRY: ${{ env.SKAFFOLD_DEFAULT_REPO }}
@@ -91,7 +78,7 @@ jobs:
           export TAG=latest
           export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
           
-          # Stop and remove existing containers
+          # Stop and remove existing containers that will be replaced with test versions
           docker compose -f compose.yaml stop credit-card-order-service third-party-service || true
           docker compose -f compose.yaml rm -f credit-card-order-service third-party-service || true
           
