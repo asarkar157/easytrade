@@ -26,27 +26,35 @@ echo "======================================"
 echo "  Observability Stack is Ready!"
 echo "======================================"
 echo
-echo "Access the following UIs:"
+echo "OpenTelemetry Collector is running and configured to send data to:"
 echo
-echo "  Grafana:     http://localhost:3000"
-echo "               Username: admin"
-echo "               Password: admin"
-echo
-echo "  Jaeger:      http://localhost:16686"
-echo "  Prometheus:  http://localhost:9090"
+if [ -n "$JAEGER_ENDPOINT" ]; then
+  echo "  Jaeger:      $JAEGER_ENDPOINT"
+else
+  echo "  Jaeger:      (not configured - set JAEGER_ENDPOINT)"
+fi
+if [ -n "$LOKI_ENDPOINT" ]; then
+  echo "  Loki:        $LOKI_ENDPOINT"
+else
+  echo "  Loki:        (not configured - set LOKI_ENDPOINT)"
+fi
+echo "  Prometheus:  Scrape http://<otel-collector-host>:8889/metrics"
 echo
 echo "======================================"
 echo "  Next Steps"
 echo "======================================"
 echo
-echo "1. Start your EasyTrade services:"
+echo "1. Configure your external Prometheus to scrape:"
+echo "   http://<otel-collector-host>:8889/metrics"
+echo
+echo "2. Start your EasyTrade services:"
 echo "   cd .."
 echo "   docker-compose build"
 echo "   docker-compose up -d"
 echo
-echo "2. Generate some load to create traces"
+echo "3. Generate some load to create traces"
 echo
-echo "3. View traces in Jaeger or Grafana"
+echo "4. View data in your external Grafana instance"
 echo
 echo "For more information, see observability/README.md"
 echo

@@ -36,15 +36,19 @@ processors:
         action: delete
 
 exporters:
-  # Export traces to Jaeger
+  # Export traces to Jaeger (configurable via JAEGER_ENDPOINT env var)
+  # Set JAEGER_ENDPOINT to your external Jaeger instance, e.g.:
+  # JAEGER_ENDPOINT=http://your-jaeger-host:4318
   otlp/jaeger:
-    endpoint: jaeger:4317
+    endpoint: ${env:JAEGER_ENDPOINT}
     tls:
-      insecure: true
+      insecure: ${env:JAEGER_INSECURE}
 
-  # Export logs to Loki via OTLP
+  # Export logs to Loki (configurable via LOKI_ENDPOINT env var)
+  # Set LOKI_ENDPOINT to your external Loki instance, e.g.:
+  # LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
   loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+    endpoint: ${env:LOKI_ENDPOINT}
     labels:
       resource:
         service.name: "service_name"
@@ -53,7 +57,13 @@ exporters:
         level: "level"
         traceID: "trace_id"
 
-  # Export metrics to Prometheus
+  # Export metrics to Prometheus (Prometheus scrapes from this endpoint)
+  # External Prometheus should scrape http://<otel-collector-host>:8889/metrics
+  # Configure your external Prometheus to scrape this endpoint:
+  # scrape_configs:
+  #   - job_name: 'otel-collector'
+  #     static_configs:
+  #       - targets: ['<otel-collector-host>:8889']
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: easytrade

@@ -2,12 +2,9 @@
 
 This directory contains the configuration for the EasyTrade observability stack, which includes:
 
-- **OpenTelemetry Collector**: Receives, processes, and exports telemetry data
-- **Jaeger**: Distributed tracing backend and UI
-- **Loki**: Log aggregation system
-- **Prometheus**: Metrics storage and querying
-- **Grafana**: Unified visualization dashboard
-- **Tempo**: Alternative tracing backend (optional)
+- **OpenTelemetry Collector**: Receives, processes, and exports telemetry data to external observability backends
+
+**Note**: This setup is configured to send telemetry data to **external instances** of Prometheus, Loki, Grafana, and Jaeger. The OpenTelemetry Collector acts as the central hub that receives telemetry from your services and forwards it to your existing observability infrastructure.
 
 ## Architecture
 
@@ -29,34 +26,64 @@ This directory contains the configuration for the EasyTrade observability stack,
       ▼          ▼          ▼
   ┌────────┐ ┌──────┐ ┌──────────┐
   │ Jaeger │ │ Loki │ │Prometheus│
-  │  :16686│ │ :3100│ │   :9090  │
+  │(External│ │(External│ │ (External) │
+  │Instance)│ │Instance)│ │  Instance   │
   └────┬───┘ └───┬──┘ └────┬─────┘
        │         │         │
        └─────────┼─────────┘
                  ▼
            ┌──────────┐
            │ Grafana  │
-           │  :3000   │
+           │(External │
+           │ Instance)│
            └──────────┘
 ```
 
+**Note**: Prometheus, Loki, and Grafana are external instances. The OpenTelemetry Collector forwards:
+- **Traces** → External Jaeger (via OTLP)
+- **Logs** → External Loki (via HTTP push API)
+- **Metrics** → External Prometheus (via scrape endpoint on port 8889)
+
 ## Quick Start
 
-### 1. Start the Observability Stack
+### 1. Configure External Observability Endpoints
+
+Before starting the observability stack, configure the endpoints for your external Prometheus, Loki, and Jaeger instances:
+
+```bash
+export JAEGER_ENDPOINT=http://your-jaeger-host:4318
+export LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
+export JAEGER_INSECURE=true  # Set to false if using TLS
+```
+
+**Note**: For Prometheus, you don't need to set an environment variable. Instead, configure your external Prometheus to scrape the OpenTelemetry Collector's metrics endpoint (see Configuration section below).
+
+### 2. Start the Observability Stack
 
 ```bash
 cd observability
 docker-compose -f docker-compose-observability.yml up -d
 ```
 
-### 2. Access the UIs
+This will start:
+- **OpenTelemetry Collector**: Receives telemetry from your services and forwards to external observability backends
 
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Jaeger**: http://localhost:16686
-- **Prometheus**: http://localhost:9090
-- **Loki**: http://localhost:3100
+### 3. Configure External Prometheus
 
-### 3. Start Your EasyTrade Services
+Add the following scrape configuration to your external Prometheus instance to collect metrics from the OpenTelemetry Collector:
+
+```yaml
+scrape_configs:
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['<otel-collector-host>:8889']
+        labels:
+          service: 'otel-collector'
+```
+
+Replace `<otel-collector-host>` with the hostname or IP address where the OpenTelemetry Collector is running.
+
+### 4. Start Your EasyTrade Services
 
 Rebuild and start your services to include the OpenTelemetry instrumentation:
 
@@ -128,7 +155,7 @@ Each service creates spans that include:
 
 **Viewing traces in Grafana:**
 1. Go to Explore
-2. Select "Jaeger" datasource
+2. Select "Jaeger" datasource (configured to point to your external Jaeger instance)
 3. Search by service name, operation, or trace ID
 4. Click on a trace to see the waterfall view
 
@@ -153,7 +180,7 @@ Time-series metrics for monitoring and alerting.
 
 **Viewing metrics in Grafana:**
 1. Go to Explore
-2. Select "Prometheus" datasource
+2. Select "Prometheus" datasource (configured to point to your external Prometheus instance)
 3. Use PromQL queries:
    ```promql
    # Request rate by service
@@ -189,7 +216,7 @@ Logs automatically include `trace_id` and `span_id` for correlation with traces.
 
 **Querying logs in Grafana:**
 1. Go to Explore
-2. Select "Loki" datasource
+2. Select "Loki" datasource (configured to point to your external Loki instance)
 3. Use LogQL queries:
    ```logql
    # All logs from a service
@@ -239,30 +266,34 @@ groups:
 Key features:
 - Receives OTLP data on ports 4317 (gRPC) and 4318 (HTTP)
 - Batches telemetry for efficiency
-- Exports traces to Jaeger
-- Exports metrics to Prometheus
-- Exports logs to Loki
+- Exports traces to external Jaeger (configured via `JAEGER_ENDPOINT` environment variable)
+- Exports metrics via Prometheus exporter endpoint (port 8889) for external Prometheus to scrape
+- Exports logs to external Loki (configured via `LOKI_ENDPOINT` environment variable)
 - Generates span metrics (RED metrics from traces)
 
-### Prometheus
+**Environment Variables:**
+- `JAEGER_ENDPOINT`: URL of your external Jaeger instance (e.g., `http://jaeger.example.com:4318`)
+- `LOKI_ENDPOINT`: URL of your external Loki push API (e.g., `http://loki.example.com:3100/loki/api/v1/push`)
+- `JAEGER_INSECURE`: Set to `true` if Jaeger doesn't use TLS, `false` otherwise
 
-**File:** `prometheus.yml`
+**Prometheus Configuration:**
+The OpenTelemetry Collector exposes metrics on port 8889. Configure your external Prometheus to scrape this endpoint:
 
-Scrapes metrics from:
-- OpenTelemetry Collector (:8889)
-- All instrumented services (if they expose /metrics or /actuator/prometheus)
+```yaml
+scrape_configs:
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['<otel-collector-host>:8889']
+```
 
-### Grafana
+### External Observability Stack
 
-**Files:**
-- `grafana/provisioning/datasources/datasources.yml` - Pre-configured datasources
-- `grafana/provisioning/dashboards/dashboards.yml` - Dashboard auto-discovery
+This setup assumes you have existing instances of:
+- **Prometheus**: For metrics storage and querying
+- **Loki**: For log aggregation
+- **Grafana**: For visualization and dashboards
 
-Datasources include:
-- Prometheus (default)
-- Jaeger (with logs correlation)
-- Loki (with trace correlation)
-- Tempo (alternative to Jaeger)
+Configure these in your Grafana instance to connect to your external Prometheus, Loki, and Jaeger instances.
 
 ## Customization
 
@@ -389,36 +420,56 @@ using (var activity = activitySource.StartActivity("ComplexOperation"))
 
 ### Prometheus not scraping metrics
 
-1. Check Prometheus targets: http://localhost:9090/targets
-2. Verify services expose metrics endpoints:
+1. Check Prometheus targets in your external Prometheus instance
+2. Verify the OpenTelemetry Collector is accessible from Prometheus:
+   ```bash
+   curl http://<otel-collector-host>:8889/metrics
+   ```
+3. Verify the scrape configuration in your external Prometheus includes the OpenTelemetry Collector endpoint
+4. Check that services expose metrics endpoints (if scraping directly):
    - Java: http://<service>:8080/actuator/prometheus
    - Node.js/Go/.NET: http://<service>:8080/metrics
 
+### External observability endpoints not receiving data
+
+1. Verify environment variables are set correctly:
+   ```bash
+   docker exec otel-collector env | grep -E "JAEGER_ENDPOINT|LOKI_ENDPOINT"
+   ```
+2. Check OpenTelemetry Collector logs for export errors:
+   ```bash
+   docker logs otel-collector
+   ```
+3. Test connectivity from the collector to external endpoints:
+   ```bash
+   docker exec otel-collector wget -O- <your-jaeger-endpoint>
+   docker exec otel-collector wget -O- <your-loki-endpoint>
+   ```
+4. Verify your external Prometheus can reach the collector's metrics endpoint (port 8889)
+
 ### Grafana datasources not working
 
-1. Check datasource configuration in Grafana UI (Configuration → Data Sources)
+1. Check datasource configuration in your external Grafana UI (Configuration → Data Sources)
 2. Test connection for each datasource
-3. Verify URLs are correct:
-   - Prometheus: http://prometheus:9090
-   - Jaeger: http://jaeger:16686
-   - Loki: http://loki:3100
+3. Verify URLs point to your external instances:
+   - Prometheus: `http://your-prometheus-host:9090`
+   - Jaeger: `http://your-jaeger-host:16686` (or OTLP endpoint)
+   - Loki: `http://your-loki-host:3100`
 
 ## Resource Usage
 
-Approximate resource requirements:
+Approximate resource requirements for local components:
 
 | Component | CPU | Memory |
 |-----------|-----|--------|
 | OTel Collector | 0.1-0.5 cores | 256-512 MB |
-| Jaeger | 0.1-0.3 cores | 256-512 MB |
-| Prometheus | 0.2-1.0 cores | 512 MB - 2 GB |
-| Loki | 0.1-0.5 cores | 256-512 MB |
-| Grafana | 0.1-0.2 cores | 128-256 MB |
-| **Total** | **0.7-2.5 cores** | **1.5-4 GB** |
+| **Total** | **0.1-0.5 cores** | **256-512 MB** |
+
+**Note**: Prometheus, Loki, Grafana, and Jaeger run on your external infrastructure and are not included in these resource requirements.
 
 ## Production Considerations
 
-This setup is optimized for local development. For production:
+This setup is configured to work with external observability infrastructure, making it suitable for both development and production:
 
 1. **High Availability:**
    - Run multiple replicas of OTel Collector
