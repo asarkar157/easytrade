@@ -102,9 +102,24 @@ jobs:
           JAEGER_ENDPOINT: ${{ secrets.JAEGER_ENDPOINT }}
           LOKI_ENDPOINT: ${{ secrets.LOKI_ENDPOINT }}
           JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'true' }}
+          VICTORIAMETRICS_ENDPOINT: ${{ secrets.VICTORIAMETRICS_ENDPOINT }}
+          VICTORIAMETRICS_ENVIRONMENT: ${{ secrets.VICTORIAMETRICS_ENVIRONMENT || 'production' }}
           DYNATRACE_ENDPOINT: ${{ secrets.DYNATRACE_ENDPOINT || 'https://zsl01171.apps.dynatrace.com/api/v2/otlp' }}
           DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
         run: |
+          # Generate Basic Auth headers if username/password are provided
+          if [ -n "${{ secrets.JAEGER_USERNAME }}" ] && [ -n "${{ secrets.JAEGER_PASSWORD }}" ]; then
+            export JAEGER_AUTH_HEADER="Basic $(echo -n '${{ secrets.JAEGER_USERNAME }}:${{ secrets.JAEGER_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          if [ -n "${{ secrets.LOKI_USERNAME }}" ] && [ -n "${{ secrets.LOKI_PASSWORD }}" ]; then
+            export LOKI_AUTH_HEADER="Basic $(echo -n '${{ secrets.LOKI_USERNAME }}:${{ secrets.LOKI_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          if [ -n "${{ secrets.VICTORIAMETRICS_USERNAME }}" ] && [ -n "${{ secrets.VICTORIAMETRICS_PASSWORD }}" ]; then
+            export VICTORIAMETRICS_AUTH_HEADER="Basic $(echo -n '${{ secrets.VICTORIAMETRICS_USERNAME }}:${{ secrets.VICTORIAMETRICS_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
           docker compose -f docker-compose-observability.yml up -d
 
       - name: Wait for observability stack to be ready

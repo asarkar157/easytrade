@@ -39,16 +39,24 @@ exporters:
   # Export traces to Jaeger (configurable via JAEGER_ENDPOINT env var)
   # Set JAEGER_ENDPOINT to your external Jaeger instance, e.g.:
   # JAEGER_ENDPOINT=http://your-jaeger-host:4318
+  # Optional: Set JAEGER_USERNAME and JAEGER_PASSWORD for basic auth
   otlp/jaeger:
     endpoint: ${env:JAEGER_ENDPOINT}
     tls:
       insecure: ${env:JAEGER_INSECURE}
+    headers:
+      # Basic auth header if credentials are provided
+      Authorization: ${env:JAEGER_AUTH_HEADER}
 
   # Export logs to Loki (configurable via LOKI_ENDPOINT env var)
   # Set LOKI_ENDPOINT to your external Loki instance, e.g.:
   # LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
+  # Optional: Set LOKI_USERNAME and LOKI_PASSWORD for basic auth
   loki:
     endpoint: ${env:LOKI_ENDPOINT}
+    headers:
+      # Basic auth header if credentials are provided
+      Authorization: ${env:LOKI_AUTH_HEADER}
     labels:
       resource:
         service.name: "service_name"
@@ -71,6 +79,19 @@ exporters:
     metric_expiration: 5m
     resource_to_telemetry_conversion:
       enabled: true
+
+  # Export metrics to VictoriaMetrics via Prometheus remote write
+  # Set VICTORIAMETRICS_ENDPOINT to your VictoriaMetrics instance, e.g.:
+  # VICTORIAMETRICS_ENDPOINT=http://victoriametrics-host:8428/api/v1/write
+  # Optional: Set VICTORIAMETRICS_USERNAME and VICTORIAMETRICS_PASSWORD for basic auth
+  prometheusremotewrite/victoriametrics:
+    endpoint: ${env:VICTORIAMETRICS_ENDPOINT}
+    headers:
+      # Basic auth header if credentials are provided
+      Authorization: ${env:VICTORIAMETRICS_AUTH_HEADER}
+    external_labels:
+      cluster: easytrade
+      environment: ${env:VICTORIAMETRICS_ENVIRONMENT:-production}
 
   # Debug exporter (optional, for troubleshooting)
   logging:
@@ -100,7 +121,7 @@ service:
     metrics:
       receivers: [otlp, spanmetrics]
       processors: [memory_limiter, batch, resource]
-      exporters: [prometheus, logging]
+      exporters: [prometheus, prometheusremotewrite/victoriametrics, logging]
 
     logs:
       receivers: [otlp]
