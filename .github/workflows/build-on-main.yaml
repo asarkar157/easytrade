@@ -77,8 +77,7 @@ jobs:
         run: |
           docker buildx ls
           docker buildx inspect --bootstrap
-          # Set Buildx as the default builder
-          docker buildx use default || docker buildx create --use --name default
+          # The builder is automatically set up by setup-buildx-action, no need to create/use manually
 
       - name: Pre-pull base images for BuildKit
         run: |
