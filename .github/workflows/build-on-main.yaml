@@ -70,6 +70,8 @@ jobs:
         run: |
           docker buildx ls
           docker buildx inspect --bootstrap
+          # Set Buildx as the default builder
+          docker buildx use default || docker buildx create --use --name default
 
       - name: Pre-pull base images for BuildKit
         run: |
@@ -86,6 +88,9 @@ jobs:
           version: 1.2.${{ github.run_number }}
 
       - name: "Build easytrade and push it to Docker registry with commit tag"
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
         uses: hiberbee/github-action-skaffold@1.27.0
         with:
           command: build
@@ -93,6 +98,9 @@ jobs:
           skaffold-version: ${{ env.SKAFFOLD_VERSION }}
 
       - name: "Build easytrade and push it to Docker registry with latest tag"
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
         uses: hiberbee/github-action-skaffold@1.27.0
         with:
           command: build
