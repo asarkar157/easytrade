@@ -9,6 +9,7 @@ on:
       - skaffold.yaml
       - src/**
 
+      
   workflow_call:
     secrets:
       DOCKERHUB_USERNAME:
