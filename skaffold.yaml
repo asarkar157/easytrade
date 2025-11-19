@@ -6,6 +6,9 @@ build:
       context: src/calculationservice
       platforms:
         - linux/amd64
+        - linux/arm64e
+      platforms:
+        - linux/amd64
         - linux/arm64
     - image: contentcreator
       context: src/contentcreator
@@ -13,7 +16,7 @@ build:
         - linux/amd64
         - linux/arm64
     - image: db
-      context: src/db
+      context: src/d
       platforms:
         - linux/amd64
         - linux/arm64

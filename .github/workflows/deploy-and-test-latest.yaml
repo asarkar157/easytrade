@@ -73,6 +73,9 @@ env:
 jobs:
   deploy-easytrade:
     runs-on: ubuntu-24.04
+    # Skip job if this is a push event and commit message doesn't contain 'deploy'
+    # workflow_dispatch and workflow_call events will always run
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, 'deploy') || contains(github.event.head_commit.message, 'Deploy') || contains(github.event.head_commit.message, 'DEPLOY')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
