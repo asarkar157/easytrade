@@ -28,10 +28,8 @@ on:
         type: boolean
         default: false
     secrets:
-      DOCKERHUB_USERNAME:
-        required: true
-      DOCKERHUB_TOKEN:
-        required: true
+      GITHUB_TOKEN:
+        required: false  # Automatically available, but can be explicitly passed
       JAEGER_ENDPOINT:
         required: false
       JAEGER_USERNAME:
@@ -68,7 +66,7 @@ on:
         required: false
 
 env:
-  SKAFFOLD_DEFAULT_REPO: asarkar157
+  SKAFFOLD_DEFAULT_REPO: ghcr.io/${{ github.repository_owner }}
 
 jobs:
   deploy-easytrade:
@@ -76,15 +74,19 @@ jobs:
     # Skip job if this is a push event and commit message doesn't contain 'deploy'
     # workflow_dispatch and workflow_call events will always run
     if: github.event_name != 'push' || contains(github.event.head_commit.message, 'deploy') || contains(github.event.head_commit.message, 'Deploy') || contains(github.event.head_commit.message, 'DEPLOY')
+    permissions:
+      contents: read
+      packages: read  # Read-only since this workflow only pulls images
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to DockerHub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Compose
         run: |
@@ -95,7 +97,7 @@ jobs:
         env:
           JAEGER_ENDPOINT: ${{ secrets.JAEGER_ENDPOINT }}
           LOKI_ENDPOINT: ${{ secrets.LOKI_ENDPOINT }}
-          JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'true' }}
+          JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'false' }}
           VICTORIAMETRICS_ENDPOINT: ${{ secrets.VICTORIAMETRICS_ENDPOINT }}
           VICTORIAMETRICS_ENVIRONMENT: ${{ secrets.VICTORIAMETRICS_ENVIRONMENT || 'production' }}
           DYNATRACE_TENANT_URL: ${{ secrets.DYNATRACE_TENANT_URL }}

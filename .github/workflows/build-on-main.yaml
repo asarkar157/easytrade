@@ -1,4 +1,4 @@
-name: Build easytrade on main
+name: Build- Main Branch
 on:
   push:
     branches:
@@ -12,10 +12,8 @@ on:
       
   workflow_call:
     secrets:
-      DOCKERHUB_USERNAME:
-        required: true
-      DOCKERHUB_TOKEN:
-        required: true
+      GITHUB_TOKEN:
+        required: false  # Automatically available, but can be explicitly passed
       KUBECONFIG:
         required: false  # Not needed for docker-compose deployment
       OQR_CLIENT_ID:
@@ -31,7 +29,7 @@ on:
 
 env:
   NAMESPACE: easytrade
-  SKAFFOLD_DEFAULT_REPO: asarkar157
+  SKAFFOLD_DEFAULT_REPO: ghcr.io/${{ github.repository_owner }}
   SKAFFOLD_VERSION: 2.17.0  # Upgraded to support platforms field
 
 jobs:
@@ -48,15 +46,19 @@ jobs:
       !contains(github.event.head_commit.message, '[SKIP') &&
       !contains(github.event.head_commit.message, '[NO CI]')
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to DockerHub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -80,7 +82,7 @@ jobs:
       - name: Pre-pull base images for BuildKit
         run: |
           # Pre-pull base images that are commonly used to avoid rate limiting during build
-          # These images are from DockerHub and need authentication
+          # These base images are from DockerHub (public images)
           docker pull gcc:14.3.0-trixie@sha256:0bb1ad383e858a31b24ce42e152af3262d68d1679db50b9096ceb75ca0edc44f || true
           docker pull ubuntu:24.04@sha256:66460d557b25769b102175144d538d88219c077c678a49af4afca6fbfc1b5252 || true
           docker pull node:24.11-trixie-slim@sha256:a7dc5312b263c86d88b02f0665f0f4516292e3490601d3def196f6d4b8aa3f06 || true
