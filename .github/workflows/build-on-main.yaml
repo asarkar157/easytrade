@@ -12,8 +12,6 @@ on:
       
   workflow_call:
     secrets:
-      GITHUB_TOKEN:
-        required: false  # Automatically available, but can be explicitly passed
       KUBECONFIG:
         required: false  # Not needed for docker-compose deployment
       OQR_CLIENT_ID:

@@ -28,8 +28,6 @@ on:
         type: boolean
         default: false
     secrets:
-      GITHUB_TOKEN:
-        required: false  # Automatically available, but can be explicitly passed
       JAEGER_ENDPOINT:
         required: false
       JAEGER_USERNAME:
