@@ -27,7 +27,7 @@ on:
       SSH_PRIVATE_KEY:
         required: false  # Not needed for docker-compose deployment
       SSO_URL:
-        required: false  # Only needed for Dynatrace internal validation
+        required: false  # Only needed for Dynatrace internal validation 
 
 env:
   NAMESPACE: easytrade
