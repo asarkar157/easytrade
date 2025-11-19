@@ -51,6 +51,7 @@ jobs:
           - platform: linux/arm64
             runner: ARM64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120  # 2 hours timeout for the entire job
     permissions:
       contents: read
       packages: write
@@ -80,13 +81,67 @@ jobs:
           # The builder is automatically set up by setup-buildx-action, no need to create/use manually
 
       - name: Pre-pull base images for BuildKit
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
-          # Pre-pull base images that are commonly used to avoid rate limiting during build
-          # These base images are from DockerHub (public images)
-          docker pull gcc:14.3.0-trixie@sha256:0bb1ad383e858a31b24ce42e152af3262d68d1679db50b9096ceb75ca0edc44f || true
-          docker pull ubuntu:24.04@sha256:66460d557b25769b102175144d538d88219c077c678a49af4afca6fbfc1b5252 || true
-          docker pull node:24.11-trixie-slim@sha256:a7dc5312b263c86d88b02f0665f0f4516292e3490601d3def196f6d4b8aa3f06 || true
-          docker pull node:24.11.0-alpine3.22@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787 || true
+          # Retry function for Docker pulls with exponential backoff
+          pull_with_retry() {
+            local image=$1
+            local max_attempts=5
+            local attempt=1
+            local delay=5
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt/$max_attempts: Pulling $image"
+              if docker pull "$image"; then
+                echo "Successfully pulled $image"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "Failed to pull $image, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))  # Exponential backoff
+                else
+                  echo "Warning: Failed to pull $image after $max_attempts attempts, continuing anyway..."
+                  return 1
+                fi
+              fi
+              attempt=$((attempt + 1))
+            done
+          }
+          
+          echo "Pre-pulling base images to avoid timeouts during build..."
+          echo "This may take several minutes depending on network speed..."
+          
+          # Pre-pull all base images used in Dockerfiles with retry logic
+          # These base images are from DockerHub and Microsoft Container Registry (public images)
+          
+          # C/C++ base images
+          pull_with_retry "gcc:14.3.0-trixie@sha256:0bb1ad383e858a31b24ce42e152af3262d68d1679db50b9096ceb75ca0edc44f" || true
+          pull_with_retry "ubuntu:24.04@sha256:66460d557b25769b102175144d538d88219c077c678a49af4afca6fbfc1b5252" || true
+          
+          # Go base images
+          pull_with_retry "golang:1.24.5-alpine3.22@sha256:daae04ebad0c21149979cd8e9db38f565ecefd8547cf4a591240dc1972cf1399" || true
+          pull_with_retry "alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1" || true
+          
+          # .NET base images
+          pull_with_retry "mcr.microsoft.com/dotnet/sdk:8.0.412-alpine3.22@sha256:ad6ab1a677854e5b681bc69f4fdb4ad9913e3798c4f89927254b6a53215d5b7d" || true
+          pull_with_retry "mcr.microsoft.com/dotnet/aspnet:8.0.18-alpine3.22@sha256:a6695199ce879ae4bcfc92f3dfd55b7db5e46e3bdc128a690c6594444f0e300a" || true
+          
+          # Node.js base images
+          pull_with_retry "node:24.11-trixie-slim@sha256:a7dc5312b263c86d88b02f0665f0f4516292e3490601d3def196f6d4b8aa3f06" || true
+          pull_with_retry "node:24.11.0-alpine3.22@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787" || true
+          
+          # Java base images
+          pull_with_retry "eclipse-temurin:21.0.8_9-jdk-alpine-3.22@sha256:89517925fa675c6c4b770bee7c44d38a7763212741b0d6fca5a5103caab21a97" || true
+          pull_with_retry "eclipse-temurin:21.0.8_9-jre-alpine-3.22@sha256:990397e0495ac088ab6ee3d949a2e97b715a134d8b96c561c5d130b3786a489d" || true
+          
+          # Other base images
+          pull_with_retry "rabbitmq:3.13.7-management-alpine@sha256:a4c3e1b9ec43fddb486e3560d4dea0ac1d520d789b3fa22646850d05bd9c0e1f" || true
+          pull_with_retry "nginx:1.29.0-alpine3.22-slim@sha256:64daa9307345a975d3952f4252827ed4be7f03ea675ad7bb5821f75ad3d43095" || true
+          pull_with_retry "mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04" || true
+          
+          echo "Base image pre-pull completed"
 
       - name: Set application version
         uses: ./.github/actions/set-version
@@ -199,17 +254,29 @@ jobs:
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
+          BUILDKIT_STEP_LOG_MAX_SIZE: 50000000
+          BUILDKIT_STEP_LOG_MAX_SPEED: 100000000
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        timeout-minutes: 60
         run: |
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}"
+          echo "Starting build for ${{ matrix.platform }} at $(date)"
+          echo "This build may take several minutes..."
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --progress=plain
+          echo "Build completed at $(date)"
 
       - name: "Build easytrade and push it to GitHub Container Registry with latest tag (${{ matrix.platform }})"
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
+          BUILDKIT_STEP_LOG_MAX_SIZE: 50000000
+          BUILDKIT_STEP_LOG_MAX_SPEED: 100000000
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        timeout-minutes: 60
         run: |
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest
+          echo "Starting build with latest tag for ${{ matrix.platform }} at $(date)"
+          echo "This build may take several minutes..."
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest --progress=plain
+          echo "Build completed at $(date)"
 
       - name: Restore original skaffold.yaml
         if: always()
