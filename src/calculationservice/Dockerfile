@@ -1,5 +1,6 @@
 FROM gcc:14.3.0-trixie@sha256:0bb1ad383e858a31b24ce42e152af3262d68d1679db50b9096ceb75ca0edc44f AS build
 
+ARG TARGETARCH
 ARG C_FLAGS="-lonesdk_static -lamqpcpp -lpthread -levent -levent_core -Wl,--no-as-needed -ldl"
 ARG DEBIAN_FRONTEND="noninteractive"
 ARG ONEAGENT_SDK_VERSION="1.7.1"
@@ -23,7 +24,9 @@ COPY ["conn_handler.h", "consume.cpp", "./"]
 
 RUN wget ${ONEAGENT_SDK_URL} -O oneagentsdk.tar.gz \
     && tar -zxvf oneagentsdk.tar.gz \
-    && g++ -std=c++17 -o consumeCandleData consume.cpp -I ./${ONEAGENT_SDK_DIR}/include -L ./${ONEAGENT_SDK_DIR}/lib/linux-x86_64 ${C_FLAGS}
+    && SDK_LIB_DIR=$(if [ "$TARGETARCH" = "amd64" ]; then echo "linux-x86_64"; elif [ "$TARGETARCH" = "arm64" ]; then echo "linux-aarch64"; else echo "linux-x86_64"; fi) \
+    && echo "Using OneAgent SDK library directory: ${SDK_LIB_DIR} for architecture: ${TARGETARCH}" \
+    && g++ -std=c++17 -o consumeCandleData consume.cpp -I ./${ONEAGENT_SDK_DIR}/include -L ./${ONEAGENT_SDK_DIR}/lib/${SDK_LIB_DIR} ${C_FLAGS}
 
 FROM ubuntu:24.04@sha256:66460d557b25769b102175144d538d88219c077c678a49af4afca6fbfc1b5252
 
