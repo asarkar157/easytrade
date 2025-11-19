@@ -232,3 +232,8 @@ services:
       OFFER_SERVICE_PROTOCOL: http
       OFFER_SERVICE_HOST: offerservice
       OFFER_SERVICE_PORT: 8080
+
+networks:
+  default:
+    name: easytrade
+    external: true

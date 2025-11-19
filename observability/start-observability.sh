@@ -7,13 +7,8 @@ echo "  EasyTrade Observability Stack"
 echo "======================================"
 echo
 
-# Create easytrade network if it doesn't exist
-if ! docker network inspect easytrade &> /dev/null; then
-    echo "Creating 'easytrade' network..."
-    docker network create easytrade
-fi
-
 # Start observability stack
+# Note: The network will be created automatically by Docker Compose
 echo "Starting observability stack..."
 docker-compose -f docker-compose-observability.yml up -d
 

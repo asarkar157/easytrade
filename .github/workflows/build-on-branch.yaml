@@ -84,11 +84,6 @@ jobs:
         run: |
           docker compose version
 
-      - name: Create easytrade network
-        if: github.event_name == 'pull_request'
-        run: |
-          docker network create easytrade || true
-
       - name: Start observability stack
         if: github.event_name == 'pull_request'
         working-directory: ./observability
@@ -98,8 +93,8 @@ jobs:
           JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'true' }}
           VICTORIAMETRICS_ENDPOINT: ${{ secrets.VICTORIAMETRICS_ENDPOINT }}
           VICTORIAMETRICS_ENVIRONMENT: ${{ secrets.VICTORIAMETRICS_ENVIRONMENT || 'production' }}
-          DYNATRACE_ENDPOINT: ${{ secrets.DYNATRACE_ENDPOINT || 'https://zsl01171.apps.dynatrace.com/api/v2/otlp' }}
-          DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
+          DYNATRACE_TENANT_URL: ${{ secrets.DYNATRACE_TENANT_URL }}
+          DYNATRACE_PLATFORM_TOKEN: ${{ secrets.DYNATRACE_PLATFORM_TOKEN }}
         run: |
           # Generate Basic Auth headers if username/password are provided
           if [ -n "${{ secrets.JAEGER_USERNAME }}" ] && [ -n "${{ secrets.JAEGER_PASSWORD }}" ]; then
@@ -112,6 +107,14 @@ jobs:
           
           if [ -n "${{ secrets.VICTORIAMETRICS_USERNAME }}" ] && [ -n "${{ secrets.VICTORIAMETRICS_PASSWORD }}" ]; then
             export VICTORIAMETRICS_AUTH_HEADER="Basic $(echo -n '${{ secrets.VICTORIAMETRICS_USERNAME }}:${{ secrets.VICTORIAMETRICS_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          # Construct Dynatrace endpoint and auth header if tenant URL and token are provided
+          if [ -n "${{ secrets.DYNATRACE_TENANT_URL }}" ] && [ -n "${{ secrets.DYNATRACE_PLATFORM_TOKEN }}" ]; then
+            # Remove trailing slash from tenant URL if present, then append /api/v2/otlp
+            TENANT_URL=$(echo "${{ secrets.DYNATRACE_TENANT_URL }}" | sed 's|/*$||')
+            export DYNATRACE_ENDPOINT="${TENANT_URL}/api/v2/otlp"
+            export DYNATRACE_AUTH_HEADER="Bearer ${{ secrets.DYNATRACE_PLATFORM_TOKEN }}"
           fi
           
           docker compose -f docker-compose-observability.yml up -d
@@ -136,6 +139,7 @@ jobs:
           else
             export TAG=${{ github.sha }}
           fi
+          # Start services - all services use the easytrade network (created in previous step)
           docker compose -f compose.yaml up -d
 
       - name: Wait for services to be healthy
@@ -179,6 +183,7 @@ jobs:
           CREDIT_CARD_IMAGE="credit-card-order-service:${TAG}"
           THIRD_PARTY_IMAGE="third-party-service:${TAG}"
           
+          # Use the easytrade network so containers can communicate with db service and other services
           # Start credit-card-order-service with test environment variables
           docker run -d --name credit-card-order-service \
             --network easytrade \

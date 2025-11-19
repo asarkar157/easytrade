@@ -35,6 +35,10 @@ processors:
       - key: http.request.header.authorization
         action: delete
 
+  # Convert cumulative metrics to delta temporality
+  # Used only for Dynatrace exporter (Dynatrace requires delta metrics)
+  cumulativetodelta:
+
 exporters:
   # Export traces to Jaeger (configurable via JAEGER_ENDPOINT env var)
   # Set JAEGER_ENDPOINT to your external Jaeger instance, e.g.:
@@ -93,6 +97,17 @@ exporters:
       cluster: easytrade
       environment: ${env:VICTORIAMETRICS_ENVIRONMENT:-production}
 
+  # Export traces, metrics, and logs to Dynatrace via OTLP
+  # Set DYNATRACE_TENANT_URL to your Dynatrace tenant URL, e.g.:
+  # DYNATRACE_TENANT_URL=https://zsl01171.apps.dynatrace.com
+  # The endpoint will be constructed as: {DYNATRACE_TENANT_URL}/api/v2/otlp
+  # Set DYNATRACE_PLATFORM_TOKEN to your Dynatrace platform token with "Ingest OpenTelemetry traces" permission
+  otlp/dynatrace:
+    endpoint: ${env:DYNATRACE_ENDPOINT}
+    headers:
+      # Bearer token authentication using platform token
+      Authorization: ${env:DYNATRACE_AUTH_HEADER}
+
   # Debug exporter (optional, for troubleshooting)
   logging:
     loglevel: info
@@ -116,17 +131,24 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource, attributes]
-      exporters: [otlp/jaeger, logging, spanmetrics]
+      exporters: [otlp/jaeger, otlp/dynatrace, logging, spanmetrics]
 
     metrics:
       receivers: [otlp, spanmetrics]
       processors: [memory_limiter, batch, resource]
       exporters: [prometheus, prometheusremotewrite/victoriametrics, logging]
 
+    # Separate metrics pipeline for Dynatrace with delta temporality
+    # Dynatrace requires delta metrics, while Prometheus/VictoriaMetrics require cumulative
+    metrics/dynatrace:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, batch, resource, cumulativetodelta]
+      exporters: [otlp/dynatrace]
+
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [loki, logging]
+      exporters: [loki, otlp/dynatrace, logging]
 
   telemetry:
     logs:

@@ -3,7 +3,10 @@ version: '3.8'
 networks:
   easytrade:
     name: easytrade
-    external: true
+    # external: false means Docker Compose will create this network
+    # Since observability stack always starts first, it creates the network
+    # The main compose.yaml then uses this network as external: true
+    external: false
 
 services:
   # OpenTelemetry Collector
@@ -44,3 +47,7 @@ services:
       - VICTORIAMETRICS_PASSWORD=${VICTORIAMETRICS_PASSWORD:-}
       - VICTORIAMETRICS_AUTH_HEADER=${VICTORIAMETRICS_AUTH_HEADER:-}
       - VICTORIAMETRICS_ENVIRONMENT=${VICTORIAMETRICS_ENVIRONMENT:-production}
+      - DYNATRACE_TENANT_URL=${DYNATRACE_TENANT_URL:-}
+      - DYNATRACE_PLATFORM_TOKEN=${DYNATRACE_PLATFORM_TOKEN:-}
+      - DYNATRACE_ENDPOINT=${DYNATRACE_ENDPOINT:-}
+      - DYNATRACE_AUTH_HEADER=${DYNATRACE_AUTH_HEADER:-}
