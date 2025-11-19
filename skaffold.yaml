@@ -4,42 +4,99 @@ build:
   artifacts:
     - image: calculationservice
       context: src/calculationservice
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: contentcreator
       context: src/contentcreator
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: db
       context: src/db
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: feature-flag-service
       context: src/feature-flag-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: frontend
       context: src/frontend
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: frontendreverseproxy
       context: src/frontendreverseproxy
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: loginservice
       context: src/loginservice
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: manager
       context: src/manager/easyTradeManager
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: pricing-service
       context: src/pricing-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: rabbitmq
       context: src/rabbitmq
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: offerservice
       context: src/offerservice
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: accountservice
       context: src/accountservice
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: aggregator-service
       context: src/aggregator-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: engine
       context: src/engine
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: credit-card-order-service
       context: src/credit-card-order-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: third-party-service
       context: src/third-party-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: broker-service
       context: src/broker-service
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: loadgen
       context: src/loadgen
+      platforms:
+        - linux/amd64
+        - linux/arm64
     - image: problem-operator
       context: src/problem-operator
+      platforms:
+        - linux/amd64
+        - linux/arm64
   tagPolicy:
     gitCommit: { ignoreChanges: true }
   local:
