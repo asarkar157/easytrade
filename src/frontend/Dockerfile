@@ -14,7 +14,9 @@ WORKDIR /app
 
 COPY --from=build ["/app/dist", "."]
 
-RUN rm /etc/nginx/conf.d/default.conf
+# Combine file operations to reduce layers and improve stability
+RUN rm -f /etc/nginx/conf.d/default.conf && \
+    echo "Removed default nginx config"
 
 COPY ["nginx.conf", "/etc/nginx/nginx.conf"]
 

@@ -73,6 +73,9 @@ jobs:
           driver-opts: |
             image=moby/buildkit:latest
             network=host
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=100000000
+            env.BUILDKIT_STEP_LOG_MAX_SPEED=200000000
+            env.BUILDKIT_STEP_LOG_MAX_TIME=30m
 
       - name: Verify Buildx setup
         run: |
@@ -303,13 +306,40 @@ jobs:
           BUILDKIT_PROGRESS: plain
           BUILDKIT_STEP_LOG_MAX_SIZE: 100000000
           BUILDKIT_STEP_LOG_MAX_SPEED: 200000000
+          BUILDKIT_STEP_LOG_MAX_TIME: 30m
           BUILDKIT_CACHE_MOUNT_NS: buildkit
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         timeout-minutes: 60
         run: |
           echo "Starting build for ${{ matrix.platform }} at $(date)"
           echo "This build may take several minutes..."
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}"
+          
+          # Retry function for Skaffold build with exponential backoff
+          build_with_retry() {
+            local max_attempts=3
+            local attempt=1
+            local delay=10
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Build attempt $attempt/$max_attempts for ${{ matrix.platform }}"
+              if skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}"; then
+                echo "Build succeeded on attempt $attempt"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "Build failed on attempt $attempt, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))
+                else
+                  echo "Build failed after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+              attempt=$((attempt + 1))
+            done
+          }
+          
+          build_with_retry
           echo "Build completed at $(date)"
 
       - name: "Build easytrade and push it to GitHub Container Registry with latest tag (${{ matrix.platform }})"
@@ -318,13 +348,40 @@ jobs:
           BUILDKIT_PROGRESS: plain
           BUILDKIT_STEP_LOG_MAX_SIZE: 100000000
           BUILDKIT_STEP_LOG_MAX_SPEED: 200000000
+          BUILDKIT_STEP_LOG_MAX_TIME: 30m
           BUILDKIT_CACHE_MOUNT_NS: buildkit
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         timeout-minutes: 60
         run: |
           echo "Starting build with latest tag for ${{ matrix.platform }} at $(date)"
           echo "This build may take several minutes..."
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest
+          
+          # Retry function for Skaffold build with exponential backoff
+          build_with_retry() {
+            local max_attempts=3
+            local attempt=1
+            local delay=10
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Build attempt $attempt/$max_attempts for ${{ matrix.platform }}"
+              if skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest; then
+                echo "Build succeeded on attempt $attempt"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "Build failed on attempt $attempt, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))
+                else
+                  echo "Build failed after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+              attempt=$((attempt + 1))
+            done
+          }
+          
+          build_with_retry
           echo "Build completed at $(date)"
 
       - name: Restore original skaffold.yaml
