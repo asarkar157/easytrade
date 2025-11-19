@@ -98,31 +98,3 @@ jobs:
           tag: latest
           push: true
           skaffold-version: ${{ env.SKAFFOLD_VERSION }}
-
-  deploy-and-test:
-    needs: build-easytrade
-    uses: ./.github/workflows/deploy-and-test-latest.yaml
-    with:
-      tag: ${{ github.sha }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      JAEGER_ENDPOINT: ${{ secrets.JAEGER_ENDPOINT }}
-      JAEGER_USERNAME: ${{ secrets.JAEGER_USERNAME }}
-      JAEGER_PASSWORD: ${{ secrets.JAEGER_PASSWORD }}
-      JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE }}
-      LOKI_ENDPOINT: ${{ secrets.LOKI_ENDPOINT }}
-      LOKI_USERNAME: ${{ secrets.LOKI_USERNAME }}
-      LOKI_PASSWORD: ${{ secrets.LOKI_PASSWORD }}
-      VICTORIAMETRICS_ENDPOINT: ${{ secrets.VICTORIAMETRICS_ENDPOINT }}
-      VICTORIAMETRICS_USERNAME: ${{ secrets.VICTORIAMETRICS_USERNAME }}
-      VICTORIAMETRICS_PASSWORD: ${{ secrets.VICTORIAMETRICS_PASSWORD }}
-      VICTORIAMETRICS_ENVIRONMENT: ${{ secrets.VICTORIAMETRICS_ENVIRONMENT }}
-      DYNATRACE_ENDPOINT: ${{ secrets.DYNATRACE_ENDPOINT }}
-      DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
-      DYNATRACE_TENANT_URL: ${{ secrets.DYNATRACE_TENANT_URL }}
-      DYNATRACE_PLATFORM_TOKEN: ${{ secrets.DYNATRACE_PLATFORM_TOKEN }}
-      OQR_CLIENT_ID: ${{ secrets.OQR_CLIENT_ID }}
-      OQR_CLIENT_SECRET: ${{ secrets.OQR_CLIENT_SECRET }}
-      OQR_URL: ${{ secrets.OQR_URL }}
-      SSO_URL: ${{ secrets.SSO_URL }}

@@ -9,28 +9,39 @@ on:
       - kubernetes-manifests/**
       - skaffold.yaml
       - src/**
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - .github/**
+      - kubernetes-manifests/**
+      - skaffold.yaml
+      - src/**
 
 env:
-  SKAFFOLD_DEFAULT_REPO: europe-docker.pkg.dev/dynatrace-demoability/docker/easytrade
   SKAFFOLD_VERSION: 2.13.2
 
 jobs:
   build-easytrade:
-    # Only run if commit message contains "build" (case-insensitive)
-    # Supports patterns like: [build], build:, build, BUILD, etc.
+    # On push: Only run if commit message contains "build" (case-insensitive)
+    # On pull_request: Always run (build + deploy/test)
     # Skips if commit message contains [skip ci], [no ci], etc.
     if: |
-      (contains(github.event.head_commit.message, 'build') ||
-       contains(github.event.head_commit.message, 'BUILD') ||
-       contains(github.event.head_commit.message, 'Build')) &&
-      !contains(github.event.head_commit.message, '[skip') &&
-      !contains(github.event.head_commit.message, '[no ci]') &&
-      !contains(github.event.head_commit.message, '[SKIP') &&
-      !contains(github.event.head_commit.message, '[NO CI]')
+      (github.event_name == 'pull_request' ||
+       (contains(github.event.head_commit.message, 'build') ||
+        contains(github.event.head_commit.message, 'BUILD') ||
+        contains(github.event.head_commit.message, 'Build'))) &&
+      (github.event_name == 'pull_request' ||
+       (!contains(github.event.head_commit.message, '[skip') &&
+        !contains(github.event.head_commit.message, '[no ci]') &&
+        !contains(github.event.head_commit.message, '[SKIP') &&
+        !contains(github.event.head_commit.message, '[NO CI]')))
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # For pull_request events, checkout the head SHA so Skaffold tags images correctly
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -66,3 +77,211 @@ jobs:
           command: build
           push: false
           skaffold-version: ${{ env.SKAFFOLD_VERSION }}
+
+      # Deploy and test steps - only run on pull_request events
+      - name: Set up Docker Compose
+        if: github.event_name == 'pull_request'
+        run: |
+          docker compose version
+
+      - name: Create easytrade network
+        if: github.event_name == 'pull_request'
+        run: |
+          docker network create easytrade || true
+
+      - name: Start observability stack
+        if: github.event_name == 'pull_request'
+        working-directory: ./observability
+        env:
+          JAEGER_ENDPOINT: ${{ secrets.JAEGER_ENDPOINT }}
+          LOKI_ENDPOINT: ${{ secrets.LOKI_ENDPOINT }}
+          JAEGER_INSECURE: ${{ secrets.JAEGER_INSECURE || 'true' }}
+          VICTORIAMETRICS_ENDPOINT: ${{ secrets.VICTORIAMETRICS_ENDPOINT }}
+          VICTORIAMETRICS_ENVIRONMENT: ${{ secrets.VICTORIAMETRICS_ENVIRONMENT || 'production' }}
+          DYNATRACE_ENDPOINT: ${{ secrets.DYNATRACE_ENDPOINT || 'https://zsl01171.apps.dynatrace.com/api/v2/otlp' }}
+          DYNATRACE_API_TOKEN: ${{ secrets.DYNATRACE_API_TOKEN }}
+        run: |
+          # Generate Basic Auth headers if username/password are provided
+          if [ -n "${{ secrets.JAEGER_USERNAME }}" ] && [ -n "${{ secrets.JAEGER_PASSWORD }}" ]; then
+            export JAEGER_AUTH_HEADER="Basic $(echo -n '${{ secrets.JAEGER_USERNAME }}:${{ secrets.JAEGER_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          if [ -n "${{ secrets.LOKI_USERNAME }}" ] && [ -n "${{ secrets.LOKI_PASSWORD }}" ]; then
+            export LOKI_AUTH_HEADER="Basic $(echo -n '${{ secrets.LOKI_USERNAME }}:${{ secrets.LOKI_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          if [ -n "${{ secrets.VICTORIAMETRICS_USERNAME }}" ] && [ -n "${{ secrets.VICTORIAMETRICS_PASSWORD }}" ]; then
+            export VICTORIAMETRICS_AUTH_HEADER="Basic $(echo -n '${{ secrets.VICTORIAMETRICS_USERNAME }}:${{ secrets.VICTORIAMETRICS_PASSWORD }}' | base64 | tr -d '\n')"
+          fi
+          
+          docker compose -f docker-compose-observability.yml up -d
+
+      - name: Wait for observability stack to be ready
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Waiting for OpenTelemetry Collector to be ready..."
+          timeout 60 bash -c 'until docker exec otel-collector wget -q --spider http://localhost:13133 2>/dev/null; do sleep 2; done' || true
+
+      - name: Start EasyTrade services
+        if: github.event_name == 'pull_request'
+        env:
+          REGISTRY: ""
+          TAG: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Use local images: REGISTRY is empty, TAG is full commit SHA (as tagged by Skaffold)
+          # For pull_request events, use head.sha; for push events, use github.sha
+          export REGISTRY=""
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            export TAG=${{ github.event.pull_request.head.sha }}
+          else
+            export TAG=${{ github.sha }}
+          fi
+          docker compose -f compose.yaml up -d
+
+      - name: Wait for services to be healthy
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          docker compose -f compose.yaml ps
+
+      - name: Check service health
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Checking service health..."
+          # Install jq if not available
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          docker compose -f compose.yaml ps --format json | jq -r '.[] | "\(.Service): \(.State)"' || docker compose -f compose.yaml ps
+          # Check if frontend reverse proxy is responding
+          timeout 60 bash -c 'until curl -f http://localhost:80 > /dev/null 2>&1; do sleep 5; done' || echo "Frontend not yet ready"
+
+      - name: Enable test environment
+        if: github.event_name == 'pull_request'
+        env:
+          REGISTRY: ""
+        run: |
+          # Use local images: REGISTRY is empty, TAG is full commit SHA
+          # For pull_request events, use head.sha; for push events, use github.sha
+          export REGISTRY=""
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            export TAG=${{ github.event.pull_request.head.sha }}
+          else
+            export TAG=${{ github.sha }}
+          fi
+          
+          # Stop and remove existing containers that will be replaced with test versions
+          docker compose -f compose.yaml stop credit-card-order-service third-party-service || true
+          docker compose -f compose.yaml rm -f credit-card-order-service third-party-service || true
+          
+          # Get the image names (local images without registry prefix)
+          CREDIT_CARD_IMAGE="credit-card-order-service:${TAG}"
+          THIRD_PARTY_IMAGE="third-party-service:${TAG}"
+          
+          # Start credit-card-order-service with test environment variables
+          docker run -d --name credit-card-order-service \
+            --network easytrade \
+            --env WORK_DELAY=10 \
+            --env WORK_RATE=10 \
+            --env PROXY_PREFIX=credit-card-order-service \
+            --env MSSQL_CONNECTIONSTRING="jdbc:sqlserver://db:1433;database=TradeManagement;user=sa;password=yourStrong(!)Password;encrypt=false;trustServerCertificate=false;loginTimeout=30;" \
+            --env THIRD_PARTY_SERVICE_HOSTANDPORT=third-party-service:8080 \
+            --env FEATURE_FLAG_SERVICE_PROTOCOL=http \
+            --env FEATURE_FLAG_SERVICE_BASE_URL=feature-flag-service \
+            --env FEATURE_FLAG_SERVICE_PORT=8080 \
+            --env JAVA_TOOL_OPTIONS="-XX:-OmitStackTraceInFastThrow" \
+            "${CREDIT_CARD_IMAGE}" || true
+          
+          # Start third-party-service with test environment variables
+          docker run -d --name third-party-service \
+            --network easytrade \
+            --env COURIER_DELAY=10 \
+            --env COURIER_RATE=10 \
+            --env MANUFACTURE_DELAY=10 \
+            --env MANUFACTURE_RATE=10 \
+            --env PROXY_PREFIX=third-party-service \
+            --env FEATURE_FLAG_SERVICE_PROTOCOL=http \
+            --env FEATURE_FLAG_SERVICE_BASE_URL=feature-flag-service \
+            --env FEATURE_FLAG_SERVICE_PORT=8080 \
+            --env CREDIT_CARD_ORDER_SERVICE_HOSTANDPORT=credit-card-order-service:8080 \
+            "${THIRD_PARTY_IMAGE}" || true
+
+      - name: Wait for services to restart
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Waiting for services to restart with test environment settings..."
+          sleep 10
+          docker ps --filter "name=credit-card-order-service" --filter "name=third-party-service" --format "table {{.Names}}\t{{.Status}}"
+
+      - name: Wait 3 minutes
+        if: github.event_name == 'pull_request'
+        run: sleep 3m
+
+      - name: Order credit card
+        if: github.event_name == 'pull_request'
+        run: |
+          BODY='{
+            "accountId": 3,
+            "email": "demo.user@dynatrace.com",
+            "name": "Demo User",
+            "shippingAddress": "ulica Andersa 352 91-682 Ilaw",
+            "cardLevel": "Platinum"
+          }'
+          
+          RESPONSE=$(docker run --rm --network easytrade curlimages/curl:latest \
+            -sLX POST 'http://credit-card-order-service:8080/v1/orders' \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "${BODY}")
+          echo "Card ordered, response: [${RESPONSE}]"
+
+      - name: Wait 12 minutes
+        if: github.event_name == 'pull_request'
+        run: sleep 12m
+
+      - name: Check credit card order
+        if: github.event_name == 'pull_request'
+        id: check-credit-card-order
+        run: |
+          # Install jq if not available
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          
+          RESPONSE=$(docker run --rm --network easytrade curlimages/curl:latest \
+            -sLX GET 'http://credit-card-order-service:8080/v1/orders/3/status/latest' \
+            -H 'accept: application/json')
+          echo "Response: [${RESPONSE}]"
+          
+          STATUS=$(echo $RESPONSE | jq -re '.results.status')
+          echo "Latest card status: [${STATUS}]"
+          
+          if [[ "$STATUS" == "card_delivered" ]]; then
+            echo "Credit card order test passed"
+            echo "result=pass" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "::error::Credit card order test failed"
+            echo "result=fail" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Disable test environment
+        if: github.event_name == 'pull_request'
+        env:
+          REGISTRY: ""
+        run: |
+          # Stop and remove test containers
+          docker stop credit-card-order-service third-party-service || true
+          docker rm credit-card-order-service third-party-service || true
+          
+          # Restore original containers using local images
+          # For pull_request events, use head.sha; for push events, use github.sha
+          export REGISTRY=""
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            export TAG=${{ github.event.pull_request.head.sha }}
+          else
+            export TAG=${{ github.sha }}
+          fi
+          docker compose -f compose.yaml up -d credit-card-order-service third-party-service

@@ -10,6 +10,11 @@ on:
         required: false
         type: string
         default: 'latest'
+      use_local_images:
+        description: 'Use locally built images instead of pulling from registry'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       tag:
@@ -17,6 +22,11 @@ on:
         required: false
         type: string
         default: 'latest'
+      use_local_images:
+        description: 'Use locally built images instead of pulling from registry'
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOCKERHUB_USERNAME:
         required: true
@@ -129,7 +139,14 @@ jobs:
           else
             export TAG=latest
           fi
-          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          
+          # If use_local_images is true, set REGISTRY to empty string to use local images
+          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+            export REGISTRY=""
+          else
+            export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          fi
+          
           docker compose -f compose.yaml up -d
 
       - name: Wait for services to be healthy
@@ -162,15 +179,26 @@ jobs:
           else
             export TAG=latest
           fi
-          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          
+          # If use_local_images is true, set REGISTRY to empty string to use local images
+          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+            export REGISTRY=""
+          else
+            export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          fi
           
           # Stop and remove existing containers that will be replaced with test versions
           docker compose -f compose.yaml stop credit-card-order-service third-party-service || true
           docker compose -f compose.yaml rm -f credit-card-order-service third-party-service || true
           
-          # Get the image names
-          CREDIT_CARD_IMAGE="${REGISTRY}/credit-card-order-service:${TAG}"
-          THIRD_PARTY_IMAGE="${REGISTRY}/third-party-service:${TAG}"
+          # Get the image names (handle empty REGISTRY for local images)
+          if [ -z "$REGISTRY" ]; then
+            CREDIT_CARD_IMAGE="credit-card-order-service:${TAG}"
+            THIRD_PARTY_IMAGE="third-party-service:${TAG}"
+          else
+            CREDIT_CARD_IMAGE="${REGISTRY}/credit-card-order-service:${TAG}"
+            THIRD_PARTY_IMAGE="${REGISTRY}/third-party-service:${TAG}"
+          fi
           
           # Start credit-card-order-service with test environment variables
           docker run -d --name credit-card-order-service \
@@ -302,6 +330,13 @@ jobs:
           else
             export TAG=latest
           fi
-          export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          
+          # If use_local_images is true, set REGISTRY to empty string to use local images
+          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+            export REGISTRY=""
+          else
+            export REGISTRY=${{ env.SKAFFOLD_DEFAULT_REPO }}
+          fi
+          
           docker compose -f compose.yaml up -d credit-card-order-service third-party-service
 
