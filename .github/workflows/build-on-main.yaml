@@ -101,23 +101,35 @@ jobs:
           # Install yq if not available (v4 syntax)
           if ! command -v yq &> /dev/null; then
             YQ_VERSION="v4.44.3"
+            YQ_DIR="${HOME}/.local/bin"
+            mkdir -p "${YQ_DIR}"
+            
             if [ "$(uname -s)" = "Linux" ]; then
               if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
                 YQ_ARCH="arm64"
               else
                 YQ_ARCH="amd64"
               fi
-              wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${YQ_ARCH}"
-              chmod +x /usr/local/bin/yq
+              wget -qO "${YQ_DIR}/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${YQ_ARCH}"
             elif [ "$(uname -s)" = "Darwin" ]; then
               if [ "$(uname -m)" = "arm64" ]; then
                 YQ_ARCH="arm64"
               else
                 YQ_ARCH="amd64"
               fi
-              wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_darwin_${YQ_ARCH}"
-              chmod +x /usr/local/bin/yq
+              wget -qO "${YQ_DIR}/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_darwin_${YQ_ARCH}"
             fi
+            
+            # Set execute permissions
+            chmod +x "${YQ_DIR}/yq"
+            # Add to PATH for current session
+            export PATH="${YQ_DIR}:${PATH}"
+          fi
+          
+          # Verify yq is available and executable
+          if ! command -v yq &> /dev/null; then
+            echo "Error: yq is not available after installation"
+            exit 1
           fi
           
           # Update all platform arrays to only include the target platform using yq v4 syntax
