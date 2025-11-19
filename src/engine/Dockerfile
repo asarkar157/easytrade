@@ -4,11 +4,12 @@ WORKDIR /app
 # make gradlew download gradle files before copying source files to use caching
 COPY ["build.gradle", "settings.gradle", "gradlew", "./"]
 COPY ["gradle", "gradle"]
-RUN ./gradlew dependencies
+# Use BuildKit cache mount to cache Gradle distribution and dependencies
+RUN --mount=type=cache,target=/root/.gradle ./gradlew dependencies
 
 COPY ["src", "./src"]
 
-RUN ./gradlew bootJar
+RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar
 
 FROM eclipse-temurin:21.0.8_9-jre-alpine-3.22@sha256:990397e0495ac088ab6ee3d949a2e97b715a134d8b96c561c5d130b3786a489d
 

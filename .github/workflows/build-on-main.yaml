@@ -143,6 +143,53 @@ jobs:
           
           echo "Base image pre-pull completed"
 
+      - name: Pre-download Gradle distribution
+        run: |
+          # Pre-download Gradle 8.14.3 distribution to avoid timeouts during Docker builds
+          # This will be cached by Docker BuildKit cache mounts if Dockerfiles use them
+          GRADLE_VERSION="8.14.3"
+          GRADLE_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-all.zip"
+          GRADLE_CACHE_DIR="${HOME}/.gradle/wrapper/dists/gradle-${GRADLE_VERSION}-all"
+          
+          echo "Pre-downloading Gradle ${GRADLE_VERSION} distribution..."
+          mkdir -p "${GRADLE_CACHE_DIR}"
+          
+          # Download with retry logic
+          download_with_retry() {
+            local url=$1
+            local output=$2
+            local max_attempts=5
+            local attempt=1
+            local delay=5
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt/$max_attempts: Downloading Gradle distribution..."
+              if wget --progress=dot:giga --timeout=300 -O "$output" "$url"; then
+                echo "Successfully downloaded Gradle distribution"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "Failed to download, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))
+                else
+                  echo "Warning: Failed to download Gradle distribution after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+              attempt=$((attempt + 1))
+            done
+          }
+          
+          # Check if already downloaded
+          if [ -f "${GRADLE_CACHE_DIR}/gradle-${GRADLE_VERSION}-all.zip" ]; then
+            echo "Gradle distribution already cached, skipping download"
+          else
+            download_with_retry "${GRADLE_URL}" "${GRADLE_CACHE_DIR}/gradle-${GRADLE_VERSION}-all.zip" || echo "Warning: Gradle pre-download failed, build will download it"
+          fi
+          
+          echo "Gradle pre-download completed"
+
       - name: Set application version
         uses: ./.github/actions/set-version
         with:
@@ -254,8 +301,9 @@ jobs:
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
-          BUILDKIT_STEP_LOG_MAX_SIZE: 50000000
-          BUILDKIT_STEP_LOG_MAX_SPEED: 100000000
+          BUILDKIT_STEP_LOG_MAX_SIZE: 100000000
+          BUILDKIT_STEP_LOG_MAX_SPEED: 200000000
+          BUILDKIT_CACHE_MOUNT_NS: buildkit
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         timeout-minutes: 60
         run: |
@@ -268,8 +316,9 @@ jobs:
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
-          BUILDKIT_STEP_LOG_MAX_SIZE: 50000000
-          BUILDKIT_STEP_LOG_MAX_SPEED: 100000000
+          BUILDKIT_STEP_LOG_MAX_SIZE: 100000000
+          BUILDKIT_STEP_LOG_MAX_SPEED: 200000000
+          BUILDKIT_CACHE_MOUNT_NS: buildkit
           SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
         timeout-minutes: 60
         run: |
