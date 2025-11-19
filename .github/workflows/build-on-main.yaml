@@ -261,7 +261,7 @@ jobs:
         run: |
           echo "Starting build for ${{ matrix.platform }} at $(date)"
           echo "This build may take several minutes..."
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --progress=plain
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}"
           echo "Build completed at $(date)"
 
       - name: "Build easytrade and push it to GitHub Container Registry with latest tag (${{ matrix.platform }})"
@@ -275,7 +275,7 @@ jobs:
         run: |
           echo "Starting build with latest tag for ${{ matrix.platform }} at $(date)"
           echo "This build may take several minutes..."
-          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest --progress=plain
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest
           echo "Build completed at $(date)"
 
       - name: Restore original skaffold.yaml
