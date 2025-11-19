@@ -93,6 +93,62 @@ jobs:
         with:
           version: 1.2.${{ github.run_number }}
 
+      - name: Install Skaffold
+        run: |
+          SKAFFOLD_VERSION="${{ env.SKAFFOLD_VERSION }}"
+          SKAFFOLD_DIR="${HOME}/.local/bin"
+          mkdir -p "${SKAFFOLD_DIR}"
+          
+          # Determine OS and architecture
+          if [ "$(uname -s)" = "Linux" ]; then
+            if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+              SKAFFOLD_ARCH="arm64"
+            else
+              SKAFFOLD_ARCH="amd64"
+            fi
+            SKAFFOLD_OS="linux"
+          elif [ "$(uname -s)" = "Darwin" ]; then
+            if [ "$(uname -m)" = "arm64" ]; then
+              SKAFFOLD_ARCH="arm64"
+            else
+              SKAFFOLD_ARCH="amd64"
+            fi
+            SKAFFOLD_OS="darwin"
+          else
+            echo "Unsupported OS: $(uname -s)"
+            exit 1
+          fi
+          
+          SKAFFOLD_BINARY="skaffold-${SKAFFOLD_OS}-${SKAFFOLD_ARCH}"
+          SKAFFOLD_URL="https://github.com/GoogleContainerTools/skaffold/releases/download/v${SKAFFOLD_VERSION}/${SKAFFOLD_BINARY}"
+          
+          echo "Installing Skaffold ${SKAFFOLD_VERSION} for ${SKAFFOLD_OS}/${SKAFFOLD_ARCH}"
+          echo "Downloading from: ${SKAFFOLD_URL}"
+          
+          # Download Skaffold binary
+          if command -v curl &> /dev/null; then
+            curl -Lo "${SKAFFOLD_DIR}/skaffold" "${SKAFFOLD_URL}"
+          elif command -v wget &> /dev/null; then
+            wget -qO "${SKAFFOLD_DIR}/skaffold" "${SKAFFOLD_URL}"
+          else
+            echo "Error: Neither curl nor wget is available"
+            exit 1
+          fi
+          
+          # Set execute permissions
+          chmod +x "${SKAFFOLD_DIR}/skaffold"
+          
+          # Add to PATH for current session
+          echo "${SKAFFOLD_DIR}" >> $GITHUB_PATH
+          
+          # Verify installation
+          "${SKAFFOLD_DIR}/skaffold" version || {
+            echo "Error: Skaffold installation verification failed"
+            exit 1
+          }
+          
+          echo "Skaffold installed successfully"
+
       - name: Filter skaffold.yaml for target platform
         run: |
           # Backup original skaffold.yaml
@@ -143,22 +199,17 @@ jobs:
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
-        uses: hiberbee/github-action-skaffold@1.27.0
-        with:
-          command: build
-          push: true
-          skaffold-version: ${{ env.SKAFFOLD_VERSION }}
+          SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        run: |
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}"
 
       - name: "Build easytrade and push it to GitHub Container Registry with latest tag (${{ matrix.platform }})"
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
-        uses: hiberbee/github-action-skaffold@1.27.0
-        with:
-          command: build
-          tag: latest
-          push: true
-          skaffold-version: ${{ env.SKAFFOLD_VERSION }}
+          SKAFFOLD_DEFAULT_REPO: ${{ env.SKAFFOLD_DEFAULT_REPO }}
+        run: |
+          skaffold build --push --default-repo="${{ env.SKAFFOLD_DEFAULT_REPO }}" --tag=latest
 
       - name: Restore original skaffold.yaml
         if: always()
