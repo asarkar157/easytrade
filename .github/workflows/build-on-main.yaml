@@ -43,7 +43,14 @@ jobs:
       !contains(github.event.head_commit.message, '[no ci]') &&
       !contains(github.event.head_commit.message, '[SKIP') &&
       !contains(github.event.head_commit.message, '[NO CI]')
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ARM64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -61,7 +68,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           driver-opts: |
             image=moby/buildkit:latest
             network=host
@@ -72,10 +79,6 @@ jobs:
           docker buildx inspect --bootstrap
           # Set Buildx as the default builder
           docker buildx use default || docker buildx create --use --name default
-
-      - name: Install QEMU emulators for cross-platform builds
-        run: |
-          docker run --privileged --rm tonistiigi/binfmt --install all
 
       - name: Pre-pull base images for BuildKit
         run: |
@@ -91,7 +94,41 @@ jobs:
         with:
           version: 1.2.${{ github.run_number }}
 
-      - name: "Build easytrade and push it to Docker registry with commit tag"
+      - name: Filter skaffold.yaml for target platform
+        run: |
+          # Backup original skaffold.yaml
+          cp skaffold.yaml skaffold.yaml.backup
+          
+          # Install yq if not available (v4 syntax)
+          if ! command -v yq &> /dev/null; then
+            YQ_VERSION="v4.44.3"
+            if [ "$(uname -s)" = "Linux" ]; then
+              if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+                YQ_ARCH="arm64"
+              else
+                YQ_ARCH="amd64"
+              fi
+              wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${YQ_ARCH}"
+              chmod +x /usr/local/bin/yq
+            elif [ "$(uname -s)" = "Darwin" ]; then
+              if [ "$(uname -m)" = "arm64" ]; then
+                YQ_ARCH="arm64"
+              else
+                YQ_ARCH="amd64"
+              fi
+              wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_darwin_${YQ_ARCH}"
+              chmod +x /usr/local/bin/yq
+            fi
+          fi
+          
+          # Update all platform arrays to only include the target platform using yq v4 syntax
+          yq eval '.build.artifacts[].platforms = ["${{ matrix.platform }}"]' -i skaffold.yaml
+          
+          echo "Updated skaffold.yaml to build only for ${{ matrix.platform }}"
+          echo "Verifying platform configuration:"
+          yq eval '.build.artifacts[0].platforms' skaffold.yaml || echo "Could not verify, but update attempted"
+
+      - name: "Build easytrade and push it to GitHub Container Registry with commit tag (${{ matrix.platform }})"
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
@@ -101,7 +138,7 @@ jobs:
           push: true
           skaffold-version: ${{ env.SKAFFOLD_VERSION }}
 
-      - name: "Build easytrade and push it to Docker registry with latest tag"
+      - name: "Build easytrade and push it to GitHub Container Registry with latest tag (${{ matrix.platform }})"
         env:
           DOCKER_BUILDKIT: 1
           BUILDKIT_PROGRESS: plain
@@ -111,3 +148,11 @@ jobs:
           tag: latest
           push: true
           skaffold-version: ${{ env.SKAFFOLD_VERSION }}
+
+      - name: Restore original skaffold.yaml
+        if: always()
+        run: |
+          if [ -f skaffold.yaml.backup ]; then
+            mv skaffold.yaml.backup skaffold.yaml
+            echo "Restored original skaffold.yaml"
+          fi

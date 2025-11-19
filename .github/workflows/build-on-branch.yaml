@@ -79,7 +79,7 @@ jobs:
           docker pull node:24.11-trixie-slim@sha256:a7dc5312b263c86d88b02f0665f0f4516292e3490601d3def196f6d4b8aa3f06 || true
           docker pull node:24.11.0-alpine3.22@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787 || true
 
-      - name: Build easytrade without pushing to docker repository
+      - name: Build easytrade without pushing to container registry
         uses: hiberbee/github-action-skaffold@1.27.0
         with:
           command: build
