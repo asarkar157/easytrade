@@ -4,7 +4,11 @@ replace_all() {
     FROM=$1
     TO=$2
     echo "Replacing [$FROM] with [$TO]"
-    grep -rl $FROM . --exclude-dir={.git,node_modules,bin,obj,build} | xargs sed -i "s/$FROM/$TO/g"
+    # Use sed with backup extension that works on both macOS (BSD sed) and Linux (GNU sed)
+    # Create backup files and then remove them to ensure compatibility
+    grep -rl $FROM . --exclude-dir={.git,node_modules,bin,obj,build} | xargs sed -i.bak "s/$FROM/$TO/g"
+    # Remove backup files created by sed
+    find . -name "*.bak" -type f -delete
 }
 
 BUILD_VERSION=$1
