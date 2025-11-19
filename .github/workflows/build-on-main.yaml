@@ -73,6 +73,10 @@ jobs:
           # Set Buildx as the default builder
           docker buildx use default || docker buildx create --use --name default
 
+      - name: Install QEMU emulators for cross-platform builds
+        run: |
+          docker run --privileged --rm tonistiigi/binfmt --install all
+
       - name: Pre-pull base images for BuildKit
         run: |
           # Pre-pull base images that are commonly used to avoid rate limiting during build

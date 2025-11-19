@@ -62,6 +62,10 @@ jobs:
           docker buildx ls
           docker buildx inspect --bootstrap
 
+      - name: Install QEMU emulators for cross-platform builds
+        run: |
+          docker run --privileged --rm tonistiigi/binfmt --install all
+
       - name: Pre-pull base images for BuildKit
         run: |
           # Pre-pull base images that are commonly used to avoid rate limiting during build
