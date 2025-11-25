@@ -41,33 +41,20 @@ processors:
 
 exporters:
   # Export traces to Jaeger (configurable via JAEGER_ENDPOINT env var)
-  # Set JAEGER_ENDPOINT to your external Jaeger instance, e.g.:
-  # JAEGER_ENDPOINT=http://your-jaeger-host:4318
-  # Optional: Set JAEGER_USERNAME and JAEGER_PASSWORD for basic auth
-  otlp/jaeger:
-    endpoint: ${env:JAEGER_ENDPOINT}
-    tls:
-      insecure: ${env:JAEGER_INSECURE}
-    headers:
-      # Basic auth header if credentials are provided
-      Authorization: ${env:JAEGER_AUTH_HEADER}
+  # Uncomment and configure when JAEGER_ENDPOINT is set
+  # otlp/jaeger:
+  #   endpoint: ${env:JAEGER_ENDPOINT}
+  #   tls:
+  #     insecure: ${env:JAEGER_INSECURE}
+  #   headers:
+  #     Authorization: ${env:JAEGER_AUTH_HEADER}
 
   # Export logs to Loki (configurable via LOKI_ENDPOINT env var)
-  # Set LOKI_ENDPOINT to your external Loki instance, e.g.:
-  # LOKI_ENDPOINT=http://your-loki-host:3100/loki/api/v1/push
-  # Optional: Set LOKI_USERNAME and LOKI_PASSWORD for basic auth
-  loki:
-    endpoint: ${env:LOKI_ENDPOINT}
-    headers:
-      # Basic auth header if credentials are provided
-      Authorization: ${env:LOKI_AUTH_HEADER}
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "service_namespace"
-      attributes:
-        level: "level"
-        traceID: "trace_id"
+  # Uncomment and configure when LOKI_ENDPOINT is set
+  # loki:
+  #   endpoint: ${env:LOKI_ENDPOINT}
+  #   headers:
+  #     Authorization: ${env:LOKI_AUTH_HEADER}
 
   # Export metrics to Prometheus (Prometheus scrapes from this endpoint)
   # External Prometheus should scrape http://<otel-collector-host>:8889/metrics
@@ -85,27 +72,24 @@ exporters:
       enabled: true
 
   # Export metrics to VictoriaMetrics via Prometheus remote write
-  # Set VICTORIAMETRICS_ENDPOINT to your VictoriaMetrics instance, e.g.:
-  # VICTORIAMETRICS_ENDPOINT=http://victoriametrics-host:8428/api/v1/write
-  # Optional: Set VICTORIAMETRICS_USERNAME and VICTORIAMETRICS_PASSWORD for basic auth
-  prometheusremotewrite/victoriametrics:
-    endpoint: ${env:VICTORIAMETRICS_ENDPOINT}
-    headers:
-      # Basic auth header if credentials are provided
-      Authorization: ${env:VICTORIAMETRICS_AUTH_HEADER}
-    external_labels:
-      cluster: easytrade
-      environment: ${env:VICTORIAMETRICS_ENVIRONMENT:-production}
+  # Uncomment and configure when VICTORIAMETRICS_ENDPOINT is set
+  # prometheusremotewrite/victoriametrics:
+  #   endpoint: ${env:VICTORIAMETRICS_ENDPOINT}
+  #   headers:
+  #     Authorization: ${env:VICTORIAMETRICS_AUTH_HEADER}
+  #   external_labels:
+  #     cluster: easytrade
+  #     environment: ${env:VICTORIAMETRICS_ENVIRONMENT:-production}
 
-  # Export traces, metrics, and logs to Dynatrace via OTLP
-  # Set DYNATRACE_TENANT_URL to your Dynatrace tenant URL, e.g.:
-  # DYNATRACE_TENANT_URL=https://zsl01171.apps.dynatrace.com
-  # The endpoint will be constructed as: {DYNATRACE_TENANT_URL}/api/v2/otlp
-  # Set DYNATRACE_PLATFORM_TOKEN to your Dynatrace platform token with "Ingest OpenTelemetry traces" permission
-  otlp/dynatrace:
+  # Export traces, metrics, and logs to Dynatrace via OTLP HTTP
+  # Dynatrace only supports OTLP over HTTP (not gRPC)
+  # Configured via DYNATRACE_ENDPOINT and DYNATRACE_AUTH_HEADER env vars
+  # Endpoint format: https://{tenant}.apps.dynatrace.com/api/v2/otlp
+  otlphttp/dynatrace:
     endpoint: ${env:DYNATRACE_ENDPOINT}
+    tls:
+      insecure: false
     headers:
-      # Bearer token authentication using platform token
       Authorization: ${env:DYNATRACE_AUTH_HEADER}
 
   # Debug exporter (optional, for troubleshooting)
@@ -122,7 +106,7 @@ connectors:
     dimensions:
       - name: http.method
       - name: http.status_code
-      - name: service.name
+      # Note: service.name is automatically included, don't add it explicitly
     exemplars:
       enabled: true
 
@@ -131,24 +115,27 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource, attributes]
-      exporters: [otlp/jaeger, otlp/dynatrace, logging, spanmetrics]
+      # Export traces to Dynatrace and logging
+      exporters: [otlphttp/dynatrace, logging, spanmetrics]
 
     metrics:
       receivers: [otlp, spanmetrics]
       processors: [memory_limiter, batch, resource]
-      exporters: [prometheus, prometheusremotewrite/victoriametrics, logging]
+      # Prometheus exporter is always available (exposes metrics endpoint)
+      exporters: [prometheus, logging]
 
     # Separate metrics pipeline for Dynatrace with delta temporality
-    # Dynatrace requires delta metrics, while Prometheus/VictoriaMetrics require cumulative
+    # Dynatrace requires delta metrics, while Prometheus requires cumulative
     metrics/dynatrace:
       receivers: [otlp, spanmetrics]
       processors: [memory_limiter, batch, resource, cumulativetodelta]
-      exporters: [otlp/dynatrace]
+      exporters: [otlphttp/dynatrace]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [loki, otlp/dynatrace, logging]
+      # Export logs to Dynatrace and logging
+      exporters: [otlphttp/dynatrace, logging]
 
   telemetry:
     logs:

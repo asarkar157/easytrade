@@ -1,0 +1,23 @@
+# EasyTrade Problem Patterns Cron Schedule
+# This file contains the same schedule as the Kubernetes CronJobs
+# Install with: crontab infrastructure/deploy/problem-patterns/crontab.example
+#
+# Schedule format: minute hour day month weekday
+# All times are in UTC
+
+# DB Not Responding - Enable at 20:00 UTC, Disable at 20:25 UTC
+0 20 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/enable-db-not-responding.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+25 20 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/disable-db-not-responding.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+
+# High CPU Usage - Enable at 04:00 UTC, Disable at 04:25 UTC
+0 4 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/enable-high-cpu-usage.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+25 4 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/disable-high-cpu-usage.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+
+# Factory Crisis - Enable at 16:00 UTC, Disable at 19:00 UTC
+0 16 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/enable-factory-crisis.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+0 19 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/disable-factory-crisis.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+
+# Ergo Aggregator Slowdown - Enable at 22:00 UTC, Disable at 22:25 UTC
+0 22 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/enable-ergo-aggregator-slowdown.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+25 22 * * * /opt/easytrade/infrastructure/deploy/problem-patterns/disable-ergo-aggregator-slowdown.sh >> /var/log/easytrade-problem-patterns.log 2>&1
+

@@ -252,6 +252,66 @@ terraform destroy
 
 Total estimated cost: ~$150/month (excluding data transfer)
 
+## Problem Patterns
+
+EasyTrade includes problem patterns that can be triggered to simulate issues for observability testing. These patterns are controlled via feature flags.
+
+### Manual Control
+
+You can manually enable/disable problem patterns using curl:
+
+```bash
+# Enable a problem pattern
+curl -X PUT "http://localhost/feature-flag-service/v1/flags/db_not_responding" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+
+# Disable a problem pattern
+curl -X PUT "http://localhost/feature-flag-service/v1/flags/db_not_responding" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+Available problem patterns:
+- `db_not_responding` - Prevents new trades from being created
+- `high_cpu_usage` - Causes broker-service slowdown and high CPU usage
+- `factory_crisis` - Prevents factory from producing cards, blocking credit card orders
+- `ergo_aggregator_slowdown` - Causes aggregators to receive slower responses
+
+### Automated Scheduling
+
+To automatically run problem patterns on a schedule (similar to Kubernetes CronJobs):
+
+1. Copy the problem pattern scripts to the EC2 instance:
+   ```bash
+   # From your local machine
+   scp -i ~/.ssh/EC2-SSH.pem -r infrastructure/deploy/problem-patterns \
+     ubuntu@<EC2_IP>:/opt/easytrade/infrastructure/deploy/
+   ```
+
+2. Run the setup script on the EC2 instance:
+   ```bash
+   # SSH to EC2
+   ssh -i ~/.ssh/EC2-SSH.pem ubuntu@<EC2_IP>
+   
+   # Run setup
+   cd /opt/easytrade/infrastructure/deploy/problem-patterns
+   ./setup-cron.sh
+   ```
+
+3. The setup script will:
+   - Make all scripts executable
+   - Create a log file
+   - Install cron jobs with the default schedule
+   - Test connectivity to the feature-flag-service
+
+4. View logs:
+   ```bash
+   tail -f /var/log/easytrade-problem-patterns.log
+   ```
+
+For more details, see [infrastructure/deploy/problem-patterns/README.md](../deploy/problem-patterns/README.md).
+
 ## Support
 
 For issues or questions:
